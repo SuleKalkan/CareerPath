@@ -1,5 +1,7 @@
+
 Design Reference: https://www.figma.com/make/EdSAI5pI6P4PywHSQlehlf/CareerPath?t=g7UT8L5OiUuh3Z8T-0 
-Issue 1 - "Preparing and organizing"(James)
+
+Issue 1 - "Preparing and organizing"(James) size:large
 
 As a student, I want to be able to organize the skills I need to learn on a roadmap
 so I am prepared for the cybersecurity position I want.
@@ -18,7 +20,7 @@ Tasks:
 []Modify skill match feature to update on skills.
 []Logic for skill matching needs work.
 
-Issue 2 — “Exploring career options” (Jane)
+Issue 2 — “Exploring career options” (Jane) size:large
 
 As a student interested in AI, I want to explore and compare related careers so I can decide which direction fits my interests.
 
@@ -38,7 +40,7 @@ Tasks:
 [] Present career information in a consistent format for comparison.
 [] Connect each career to its recommended preparation steps.
 
-Issue 3 — “Uploading completed courses” (Lia)
+Issue 3 — “Uploading completed courses” (Lia) size:small
 
 As a transfer student, I want to upload my completed courses so I can update my roadmap without entering each course individually.
 
@@ -63,7 +65,7 @@ Tasks:
 [] Connect confirmed courses to roadmap progress.
 [] Implement upload validation and error messages.
 
-Issue 4 — “Finding a career direction” (Alex)
+Issue 4 — “Finding a career direction” (Alex) size:medium
 
 As a student unsure which technology career to pursue, I want to see roles related to my interests and coursework so I can choose a direction and understand how to prepare.
 

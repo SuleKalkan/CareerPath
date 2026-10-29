@@ -1,0 +1,10 @@
+{
+  "description": "Easily access and view Google Drive folders through shared links, streamlining file sharing and collaboration for teams and individuals.",
+  "robots": {
+    "index": false
+  },
+  "accessibility": {
+    "addBypassLinks": false,
+    "ignoreReducedMotion": false
+  }
+}

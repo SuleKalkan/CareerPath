@@ -49,11 +49,14 @@ type RoadmapItem = {
   duration: string;
   status: "Completed" | "In progress" | "Not started";
   description: string;
+  skill?: string;
 };
 
 type NewRoadmapItem = Omit<RoadmapItem, "id" | "status">;
+type SkillCoverageStatus = "In profile" | "Planned" | "Needs activity";
 
 const initialProfileSkills = ["Python", "React", "Git", "Java", "Data structures"];
+const cybersecurityRequiredSkills = ["Networking", "Linux", "Python", "SIEM", "Risk analysis"];
 
 const jobs: Job[] = [
   {
@@ -78,7 +81,7 @@ const jobs: Job[] = [
     posted: "4 days ago",
     logo: "B",
     logoClass: "logo-red",
-    requiredSkills: ["Networking", "Linux", "Python", "SIEM", "Risk analysis"],
+    requiredSkills: cybersecurityRequiredSkills,
     description:
       "Support security monitoring and risk assessment initiatives while learning from a multidisciplinary cybersecurity team.",
   },
@@ -123,6 +126,32 @@ function getMatchedJob(job: Job, profileSkills: string[]): MatchedJob {
       ? Math.round((skills.length / job.requiredSkills.length) * 100)
       : 0,
   };
+}
+
+function getSkillCoverage(
+  requiredSkills: string[],
+  profileSkills: string[],
+  roadmap: RoadmapItem[],
+): { skill: string; status: SkillCoverageStatus }[] {
+  const profileSkillSet = new Set(profileSkills.map((skill) => skill.trim().toLowerCase()));
+  const plannedSkillSet = new Set(
+    roadmap
+      .flatMap((item) => item.category === "Skill" && item.skill
+        ? [item.skill.trim().toLowerCase()]
+        : []),
+  );
+
+  return requiredSkills.map((skill) => {
+    const normalizedSkill = skill.toLowerCase();
+    return {
+      skill,
+      status: profileSkillSet.has(normalizedSkill)
+        ? "In profile"
+        : plannedSkillSet.has(normalizedSkill)
+          ? "Planned"
+          : "Needs activity",
+    };
+  });
 }
 
 const initialRoadmap: RoadmapItem[] = [
@@ -520,14 +549,20 @@ function JobsView({
 
 function RoadmapView({
   roadmap,
+  profileSkills,
+  cybersecuritySkills,
   addActivity,
+  onAddSkill,
   removeActivity,
   updateStatus,
   courseFile,
   importCourses,
 }: {
   roadmap: RoadmapItem[];
+  profileSkills: string[];
+  cybersecuritySkills: string[];
   addActivity: (activity: NewRoadmapItem) => void;
+  onAddSkill: (skill: string) => void;
   removeActivity: (id: number) => void;
   updateStatus: (id: number) => void;
   courseFile: string;
@@ -535,8 +570,10 @@ function RoadmapView({
 }) {
   const [selected, setSelected] = useState<RoadmapItem | null>(null);
   const [addingActivity, setAddingActivity] = useState(false);
+  const [activityCategory, setActivityCategory] = useState("Skill");
   const complete = roadmap.filter((item) => item.status === "Completed").length;
   const percent = roadmap.length ? Math.round((complete / roadmap.length) * 100) : 0;
+  const skillCoverage = getSkillCoverage(cybersecuritySkills, profileSkills, roadmap);
   const handleAddActivity = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const formData = new FormData(event.currentTarget);
@@ -545,9 +582,11 @@ function RoadmapView({
       category: String(formData.get("category")),
       duration: String(formData.get("duration")).trim() || "Flexible",
       description: String(formData.get("description")).trim() || "Added to your career roadmap.",
+      ...(formData.get("skill") ? { skill: String(formData.get("skill")) } : {}),
     });
     event.currentTarget.reset();
     setAddingActivity(false);
+    setActivityCategory("Skill");
   };
   return (
     <div className="page roadmap-page">
@@ -573,7 +612,7 @@ function RoadmapView({
               <div className="roadmap-form-row">
                 <label>
                   Category
-                  <select name="category" defaultValue="Skill">
+                  <select name="category" value={activityCategory} onChange={(event) => setActivityCategory(event.target.value)}>
                     <option>Skill</option>
                     <option>Course</option>
                     <option>Project</option>
@@ -586,6 +625,15 @@ function RoadmapView({
                   <input name="duration" maxLength={40} placeholder="e.g. 3 weeks" />
                 </label>
               </div>
+              {activityCategory === "Skill" && (
+                <label>
+                  Related cybersecurity skill
+                  <select name="skill" defaultValue="">
+                    <option value="">Select a skill (optional)</option>
+                    {cybersecuritySkills.map((skill) => <option value={skill} key={skill}>{skill}</option>)}
+                  </select>
+                </label>
+              )}
               <label>
                 Description
                 <textarea name="description" rows={2} maxLength={240} placeholder="What will you work on?" />
@@ -630,6 +678,23 @@ function RoadmapView({
           )}
         </section>
         <aside>
+          <section className="panel skill-coverage">
+            <span className="eyebrow green-text">Cybersecurity Analyst</span>
+            <h3>Skill coverage</h3>
+            <p>Profile skills count as learned. Roadmap activities show what you plan to work on.</p>
+            <div className="coverage-list">
+              {skillCoverage.map(({ skill, status }) => (
+                <div className="coverage-row" key={skill}>
+                  <span>{skill}</span>
+                  {status === "Needs activity" ? (
+                    <button className="coverage-add" onClick={() => onAddSkill(skill)}><Icon name="plus" size={14} /> Add</button>
+                  ) : (
+                    <small className={`coverage-status ${status === "In profile" ? "acquired" : "planned"}`}>{status}</small>
+                  )}
+                </div>
+              ))}
+            </div>
+          </section>
           <section className="panel roadmap-courses">
             <span className="stat-icon green"><Icon name="file" /></span>
             <div>
@@ -807,11 +872,15 @@ export default function App() {
     const trimmedSkill = skill.trim();
     if (!trimmedSkill) return;
     const title = `Develop ${trimmedSkill}`;
-    if (roadmap.some((item) => item.category === "Skill" && item.title.trim().toLowerCase() === title.toLowerCase())) {
+    if (roadmap.some((item) =>
+      item.category === "Skill" &&
+      (item.skill?.trim().toLowerCase() === trimmedSkill.toLowerCase() ||
+        item.title.trim().toLowerCase() === title.toLowerCase()),
+    )) {
       showToast(`${trimmedSkill} is already on your roadmap`);
       return;
     }
-    setRoadmap((current) => [...current, { id: Date.now(), title, category: "Skill", duration: "3 weeks", status: "Not started", description: `Build practical ${trimmedSkill} experience through a guided project selected for your career goal.` }]);
+    setRoadmap((current) => [...current, { id: Date.now(), title, category: "Skill", duration: "3 weeks", status: "Not started", description: `Build practical ${trimmedSkill} experience through a guided project selected for your career goal.`, skill: trimmedSkill }]);
     showToast(`${trimmedSkill} added to your roadmap`);
   };
   const addRoadmapActivity = (activity: NewRoadmapItem) => {
@@ -852,7 +921,7 @@ export default function App() {
         {view === "home" && <Dashboard setView={setView} jobs={matchedJobs} />}
         {view === "jobs" && <JobsView jobs={matchedJobs} saved={saved} onToggleSave={toggleSave} onAddSkill={addSkill} />}
         {view === "saved" && <SavedView jobs={matchedJobs} saved={saved} onToggleSave={toggleSave} openJobs={() => setView("jobs")} />}
-        {view === "roadmap" && <RoadmapView roadmap={roadmap} addActivity={addRoadmapActivity} removeActivity={removeRoadmapActivity} updateStatus={updateStatus} courseFile={courseFile} importCourses={importCourses} />}
+        {view === "roadmap" && <RoadmapView roadmap={roadmap} profileSkills={profileSkills} cybersecuritySkills={cybersecurityRequiredSkills} addActivity={addRoadmapActivity} onAddSkill={addSkill} removeActivity={removeRoadmapActivity} updateStatus={updateStatus} courseFile={courseFile} importCourses={importCourses} />}
         {view === "profile" && <ProfileView skills={profileSkills} onAddSkill={addProfileSkill} onRemoveSkill={removeProfileSkill} />}
       </main>
       {toast && <div className="toast"><span><Icon name="check" size={16} /></span>{toast}</div>}

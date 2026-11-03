@@ -229,6 +229,15 @@ button { cursor: pointer; }
 .roadmap-timeline .timeline-more[open] .when-closed { display: none; }
 .roadmap-timeline .timeline-more[open] .when-open { display: inline; }
 .roadmap-layout aside { display: flex; flex-direction: column; gap: 16px; }
+.skill-coverage { padding: 22px; }
+.skill-coverage h3 { font-size: 16px; margin: 8px 0 6px; }
+.skill-coverage > p { color: var(--muted); font-size: 11px; line-height: 1.55; margin-bottom: 14px; }
+.coverage-list { border-top: 1px solid var(--line); }
+.coverage-row { min-height: 40px; display: flex; align-items: center; justify-content: space-between; gap: 8px; border-bottom: 1px solid var(--line); color: var(--ink-soft); font-size: 11px; }
+.coverage-status { border-radius: 20px; padding: 5px 8px; font-size: 9px; font-weight: 700; white-space: nowrap; }
+.coverage-status.acquired { color: var(--green); background: var(--green-soft); }
+.coverage-status.planned { color: var(--ink-soft); background: var(--surface-soft); }
+.coverage-add { display: inline-flex; align-items: center; gap: 3px; border: 0; border-radius: 6px; padding: 5px 8px; background: var(--green-soft); color: var(--green); font-size: 9px; font-weight: 700; }
 .roadmap-courses { padding: 22px; }.roadmap-courses h3 { font-size: 16px; margin: 12px 0 6px; }.roadmap-courses > div > p { color: var(--muted); font-size: 11px; line-height: 1.55; }
 .roadmap-courses .course-upload { min-height: 92px; margin-top: 17px; padding: 14px; cursor: pointer; }.roadmap-courses .course-upload input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }.roadmap-courses .course-upload > span { width: 36px; height: 36px; }.roadmap-courses .course-upload div { min-width: 0; }.roadmap-courses .course-upload strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .roadmap-aside, .advisor-card { padding: 22px; }.roadmap-aside h3 { font-size: 16px; margin: 14px 0 6px; }.roadmap-aside > p, .advisor-card p { color: var(--muted); font-size: 11px; line-height: 1.55; margin-bottom: 18px; }.roadmap-aside > div { display: flex; justify-content: space-between; border-top: 1px solid var(--line); padding: 12px 0; font-size: 10px; }.roadmap-aside > div span { color: var(--muted); }.roadmap-aside .btn { width: 100%; margin-top: 8px; }

@@ -29,13 +29,17 @@ type Job = {
   company: string;
   location: string;
   type: string;
-  match: number;
   posted: string;
   logo: string;
   logoClass: string;
+  requiredSkills: string[];
+  description: string;
+};
+
+type MatchedJob = Job & {
+  match: number;
   skills: string[];
   missing: string[];
-  description: string;
 };
 
 type RoadmapItem = {
@@ -47,6 +51,8 @@ type RoadmapItem = {
   description: string;
 };
 
+const initialProfileSkills = ["Python", "React", "Git", "Java", "Data structures"];
+
 const jobs: Job[] = [
   {
     id: 1,
@@ -54,12 +60,10 @@ const jobs: Job[] = [
     company: "Lowe’s",
     location: "Charlotte, NC",
     type: "Internship",
-    match: 92,
     posted: "2 days ago",
     logo: "L",
     logoClass: "logo-blue",
-    skills: ["Python", "Git", "Data structures"],
-    missing: ["SQL", "AWS Cloud"],
+    requiredSkills: ["Python", "Git", "Data structures", "SQL", "AWS Cloud"],
     description:
       "Join a product engineering team building reliable tools used by millions of customers. You’ll collaborate with mentors and ship production-ready features.",
   },
@@ -69,12 +73,10 @@ const jobs: Job[] = [
     company: "Bank of America",
     location: "Charlotte, NC",
     type: "Internship",
-    match: 86,
     posted: "4 days ago",
     logo: "B",
     logoClass: "logo-red",
-    skills: ["Networking", "Linux", "Python"],
-    missing: ["SIEM", "Risk analysis"],
+    requiredSkills: ["Networking", "Linux", "Python", "SIEM", "Risk analysis"],
     description:
       "Support security monitoring and risk assessment initiatives while learning from a multidisciplinary cybersecurity team.",
   },
@@ -84,12 +86,10 @@ const jobs: Job[] = [
     company: "Duke Energy",
     location: "Hybrid",
     type: "Co-op",
-    match: 81,
     posted: "1 week ago",
     logo: "D",
     logoClass: "logo-teal",
-    skills: ["Python", "Excel", "Statistics"],
-    missing: ["Tableau", "SQL"],
+    requiredSkills: ["Python", "Excel", "Statistics", "Tableau", "SQL"],
     description:
       "Transform operational datasets into clear insights and dashboards that help teams make informed decisions.",
   },
@@ -99,16 +99,29 @@ const jobs: Job[] = [
     company: "Red Ventures",
     location: "Fort Mill, SC",
     type: "Entry level",
-    match: 76,
     posted: "1 week ago",
     logo: "R",
     logoClass: "logo-orange",
-    skills: ["Linux", "Communication", "Git"],
-    missing: ["AWS Cloud", "Docker"],
+    requiredSkills: ["Linux", "Communication", "Git", "AWS Cloud", "Docker"],
     description:
       "Help maintain cloud systems and partner with engineering teams to diagnose and resolve technical issues.",
   },
 ];
+
+function getMatchedJob(job: Job, profileSkills: string[]): MatchedJob {
+  const profileSkillSet = new Set(profileSkills.map((skill) => skill.trim().toLowerCase()));
+  const skills = job.requiredSkills.filter((skill) => profileSkillSet.has(skill.toLowerCase()));
+  const missing = job.requiredSkills.filter((skill) => !profileSkillSet.has(skill.toLowerCase()));
+
+  return {
+    ...job,
+    skills,
+    missing,
+    match: job.requiredSkills.length
+      ? Math.round((skills.length / job.requiredSkills.length) * 100)
+      : 0,
+  };
+}
 
 const initialRoadmap: RoadmapItem[] = [
   {
@@ -297,7 +310,13 @@ function Header({ title, openMenu }: { title: string; openMenu: () => void }) {
   );
 }
 
-function Dashboard({ setView }: { setView: (view: View) => void }) {
+function Dashboard({
+  setView,
+  jobs,
+}: {
+  setView: (view: View) => void;
+  jobs: MatchedJob[];
+}) {
   return (
     <div className="page dashboard-page">
       <section className="welcome-card">
@@ -390,20 +409,22 @@ function Dashboard({ setView }: { setView: (view: View) => void }) {
 }
 
 function JobsView({
+  jobs,
   saved,
   onToggleSave,
   onAddSkill,
 }: {
+  jobs: MatchedJob[];
   saved: number[];
   onToggleSave: (id: number) => void;
   onAddSkill: (skill: string) => void;
 }) {
   const [query, setQuery] = useState("");
-  const [selected, setSelected] = useState<Job | null>(null);
+  const [selected, setSelected] = useState<MatchedJob | null>(null);
   const [filterOpen, setFilterOpen] = useState(false);
   const [activeType, setActiveType] = useState("All roles");
   const filtered = useMemo(() => jobs.filter((job) =>
-    `${job.title} ${job.company} ${job.skills.join(" ")}`.toLowerCase().includes(query.toLowerCase()) &&
+    `${job.title} ${job.company} ${job.requiredSkills.join(" ")}`.toLowerCase().includes(query.toLowerCase()) &&
     (activeType === "All roles" || job.type === activeType)
   ), [query, activeType]);
 
@@ -429,10 +450,10 @@ function JobsView({
           <div>
             <section className="panel match-panel">
               <div className="section-heading">
-                <div><span className="eyebrow green-text">Your skill match</span><h3>You’re a strong candidate</h3></div>
+                <div><span className="eyebrow green-text">Your skill match</span><h3>{selected.match >= 70 ? "You’re a strong candidate" : "Build your match for this role"}</h3></div>
                 <ProgressRing value={selected.match} size="small" />
               </div>
-              <p className="section-intro">Your profile meets most of this role’s core requirements. Add the missing skills to your roadmap to become even more competitive.</p>
+              <p className="section-intro">Your profile matches {selected.skills.length} of {selected.requiredSkills.length} core skills. Add missing skills to your roadmap to become more competitive.</p>
               <div className="skills-columns">
                 <div><h4><span className="dot green" /> Skills you have</h4>{selected.skills.map((skill) => <span className="skill-row" key={skill}><Icon name="check" size={16} /> {skill}<small>From profile</small></span>)}</div>
                 <div><h4><span className="dot amber" /> Skills to develop</h4>{selected.missing.map((skill) => <span className="skill-row missing" key={skill}><Icon name="target" size={16} /> {skill}<button onClick={() => onAddSkill(skill)}><Icon name="plus" size={15} /> Add</button></span>)}</div>
@@ -617,7 +638,7 @@ function RoadmapView({
   );
 }
 
-function SavedView({ saved, onToggleSave, openJobs }: { saved: number[]; onToggleSave: (id: number) => void; openJobs: () => void }) {
+function SavedView({ jobs, saved, onToggleSave, openJobs }: { jobs: MatchedJob[]; saved: number[]; onToggleSave: (id: number) => void; openJobs: () => void }) {
   const savedJobs = jobs.filter((job) => saved.includes(job.id));
   return (
     <div className="page saved-page">
@@ -639,13 +660,20 @@ function SavedView({ saved, onToggleSave, openJobs }: { saved: number[]; onToggl
   );
 }
 
-function ProfileView() {
+function ProfileView({
+  skills,
+  onAddSkill,
+  onRemoveSkill,
+}: {
+  skills: string[];
+  onAddSkill: (skill: string) => void;
+  onRemoveSkill: (skill: string) => void;
+}) {
   const [uploaded, setUploaded] = useState(false);
-  const [skills, setSkills] = useState(["Python", "React", "Git", "Java", "Data structures"]);
   const [adding, setAdding] = useState(false);
   const [newSkill, setNewSkill] = useState("");
   const addSkill = () => {
-    if (newSkill.trim()) setSkills([...skills, newSkill.trim()]);
+    onAddSkill(newSkill);
     setNewSkill("");
     setAdding(false);
   };
@@ -667,7 +695,7 @@ function ProfileView() {
           </section>
           <section className="panel profile-section">
             <div className="section-heading"><div><span className="eyebrow">What you know</span><h3>Skills</h3></div><button className="text-button" onClick={() => setAdding(true)}><Icon name="plus" size={16} /> Add skill</button></div>
-            <div className="profile-skills">{skills.map((skill) => <span key={skill}>{skill}<button aria-label={`Remove ${skill}`} onClick={() => setSkills(skills.filter((item) => item !== skill))}><Icon name="close" size={13} /></button></span>)}</div>
+            <div className="profile-skills">{skills.map((skill) => <span key={skill}>{skill}<button aria-label={`Remove ${skill}`} onClick={() => onRemoveSkill(skill)}><Icon name="close" size={13} /></button></span>)}</div>
             {adding && <div className="inline-form"><input autoFocus value={newSkill} onChange={(event) => setNewSkill(event.target.value)} onKeyDown={(event) => event.key === "Enter" && addSkill()} placeholder="Enter a skill" /><AppButton onClick={addSkill}>Add</AppButton><AppButton variant="ghost" onClick={() => setAdding(false)}>Cancel</AppButton></div>}
           </section>
           <section className="panel profile-section">
@@ -688,9 +716,14 @@ export default function App() {
   const [view, setView] = useState<View>("home");
   const [menuOpen, setMenuOpen] = useState(false);
   const [saved, setSaved] = useState<number[]>([1, 2]);
+  const [profileSkills, setProfileSkills] = useState(initialProfileSkills);
   const [roadmap, setRoadmap] = useState<RoadmapItem[]>(initialRoadmap);
   const [courseFile, setCourseFile] = useState("");
   const [toast, setToast] = useState("");
+  const matchedJobs = useMemo(
+    () => jobs.map((job) => getMatchedJob(job, profileSkills)),
+    [profileSkills],
+  );
 
   const showToast = (message: string) => {
     setToast(message);
@@ -699,6 +732,19 @@ export default function App() {
   const toggleSave = (id: number) => {
     setSaved((current) => current.includes(id) ? current.filter((item) => item !== id) : [...current, id]);
     showToast(saved.includes(id) ? "Removed from saved jobs" : "Job saved to your shortlist");
+  };
+  const addProfileSkill = (skill: string) => {
+    const trimmedSkill = skill.trim();
+    if (!trimmedSkill) return;
+    if (profileSkills.some((item) => item.toLowerCase() === trimmedSkill.toLowerCase())) {
+      showToast("That skill is already in your profile");
+      return;
+    }
+    setProfileSkills((current) => [...current, trimmedSkill]);
+    showToast(`${trimmedSkill} added to your profile`);
+  };
+  const removeProfileSkill = (skill: string) => {
+    setProfileSkills((current) => current.filter((item) => item !== skill));
   };
   const addSkill = (skill: string) => {
     if (!roadmap.some((item) => item.title.includes(skill))) {
@@ -733,11 +779,11 @@ export default function App() {
       <Sidebar view={view} setView={setView} open={menuOpen} close={() => setMenuOpen(false)} />
       <main className="main-shell">
         <Header title={titles[view]} openMenu={() => setMenuOpen(true)} />
-        {view === "home" && <Dashboard setView={setView} />}
-        {view === "jobs" && <JobsView saved={saved} onToggleSave={toggleSave} onAddSkill={addSkill} />}
-        {view === "saved" && <SavedView saved={saved} onToggleSave={toggleSave} openJobs={() => setView("jobs")} />}
+        {view === "home" && <Dashboard setView={setView} jobs={matchedJobs} />}
+        {view === "jobs" && <JobsView jobs={matchedJobs} saved={saved} onToggleSave={toggleSave} onAddSkill={addSkill} />}
+        {view === "saved" && <SavedView jobs={matchedJobs} saved={saved} onToggleSave={toggleSave} openJobs={() => setView("jobs")} />}
         {view === "roadmap" && <RoadmapView roadmap={roadmap} updateStatus={updateStatus} courseFile={courseFile} importCourses={importCourses} />}
-        {view === "profile" && <ProfileView />}
+        {view === "profile" && <ProfileView skills={profileSkills} onAddSkill={addProfileSkill} onRemoveSkill={removeProfileSkill} />}
       </main>
       {toast && <div className="toast"><span><Icon name="check" size={16} /></span>{toast}</div>}
     </div>

@@ -53,7 +53,7 @@ type RoadmapItem = {
 };
 
 type NewRoadmapItem = Omit<RoadmapItem, "id" | "status">;
-type SkillCoverageStatus = "In profile" | "Planned" | "Needs activity";
+type SkillCoverageStatus = "In profile" | "Completed" | "Planned" | "Needs activity";
 
 const initialProfileSkills = ["Python", "React", "Git", "Java", "Data structures"];
 const cybersecurityRequiredSkills = ["Networking", "Linux", "Python", "SIEM", "Risk analysis"];
@@ -113,10 +113,20 @@ const jobs: Job[] = [
   },
 ];
 
-function getMatchedJob(job: Job, profileSkills: string[]): MatchedJob {
-  const profileSkillSet = new Set(profileSkills.map((skill) => skill.trim().toLowerCase()));
-  const skills = job.requiredSkills.filter((skill) => profileSkillSet.has(skill.toLowerCase()));
-  const missing = job.requiredSkills.filter((skill) => !profileSkillSet.has(skill.toLowerCase()));
+function getAcquiredSkills(profileSkills: string[], roadmap: RoadmapItem[]): Set<string> {
+  const completedRoadmapSkills = roadmap
+    .filter((item) => item.category === "Skill" && item.status === "Completed" && item.skill)
+    .flatMap((item) => item.skill ? [item.skill.trim().toLowerCase()] : []);
+
+  return new Set([
+    ...profileSkills.map((skill) => skill.trim().toLowerCase()),
+    ...completedRoadmapSkills,
+  ]);
+}
+
+function getMatchedJob(job: Job, acquiredSkills: Set<string>): MatchedJob {
+  const skills = job.requiredSkills.filter((skill) => acquiredSkills.has(skill.toLowerCase()));
+  const missing = job.requiredSkills.filter((skill) => !acquiredSkills.has(skill.toLowerCase()));
 
   return {
     ...job,
@@ -133,10 +143,10 @@ function getSkillCoverage(
   profileSkills: string[],
   roadmap: RoadmapItem[],
 ): { skill: string; status: SkillCoverageStatus }[] {
-  const profileSkillSet = new Set(profileSkills.map((skill) => skill.trim().toLowerCase()));
+  const acquiredSkillSet = getAcquiredSkills(profileSkills, roadmap);
   const plannedSkillSet = new Set(
     roadmap
-      .flatMap((item) => item.category === "Skill" && item.skill
+      .flatMap((item) => item.category === "Skill" && item.status !== "Completed" && item.skill
         ? [item.skill.trim().toLowerCase()]
         : []),
   );
@@ -145,8 +155,10 @@ function getSkillCoverage(
     const normalizedSkill = skill.toLowerCase();
     return {
       skill,
-      status: profileSkillSet.has(normalizedSkill)
+      status: profileSkills.some((profileSkill) => profileSkill.trim().toLowerCase() === normalizedSkill)
         ? "In profile"
+        : acquiredSkillSet.has(normalizedSkill)
+          ? "Completed"
         : plannedSkillSet.has(normalizedSkill)
           ? "Planned"
           : "Needs activity",
@@ -681,7 +693,7 @@ function RoadmapView({
           <section className="panel skill-coverage">
             <span className="eyebrow green-text">Cybersecurity Analyst</span>
             <h3>Skill coverage</h3>
-            <p>Profile skills count as learned. Roadmap activities show what you plan to work on.</p>
+            <p>Profile skills and completed skill activities count as learned. Incomplete activities stay planned.</p>
             <div className="coverage-list">
               {skillCoverage.map(({ skill, status }) => (
                 <div className="coverage-row" key={skill}>
@@ -689,7 +701,7 @@ function RoadmapView({
                   {status === "Needs activity" ? (
                     <button className="coverage-add" onClick={() => onAddSkill(skill)}><Icon name="plus" size={14} /> Add</button>
                   ) : (
-                    <small className={`coverage-status ${status === "In profile" ? "acquired" : "planned"}`}>{status}</small>
+                    <small className={`coverage-status ${status === "In profile" || status === "Completed" ? "acquired" : "planned"}`}>{status}</small>
                   )}
                 </div>
               ))}
@@ -842,9 +854,13 @@ export default function App() {
   const [roadmap, setRoadmap] = useState<RoadmapItem[]>(initialRoadmap);
   const [courseFile, setCourseFile] = useState("");
   const [toast, setToast] = useState("");
+  const acquiredSkills = useMemo(
+    () => getAcquiredSkills(profileSkills, roadmap),
+    [profileSkills, roadmap],
+  );
   const matchedJobs = useMemo(
-    () => jobs.map((job) => getMatchedJob(job, profileSkills)),
-    [profileSkills],
+    () => jobs.map((job) => getMatchedJob(job, acquiredSkills)),
+    [acquiredSkills],
   );
 
   const showToast = (message: string) => {

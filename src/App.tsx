@@ -51,6 +51,8 @@ type RoadmapItem = {
   description: string;
 };
 
+type NewRoadmapItem = Omit<RoadmapItem, "id" | "status">;
+
 const initialProfileSkills = ["Python", "React", "Git", "Java", "Data structures"];
 
 const jobs: Job[] = [
@@ -518,18 +520,35 @@ function JobsView({
 
 function RoadmapView({
   roadmap,
+  addActivity,
+  removeActivity,
   updateStatus,
   courseFile,
   importCourses,
 }: {
   roadmap: RoadmapItem[];
+  addActivity: (activity: NewRoadmapItem) => void;
+  removeActivity: (id: number) => void;
   updateStatus: (id: number) => void;
   courseFile: string;
   importCourses: (fileName: string) => void;
 }) {
   const [selected, setSelected] = useState<RoadmapItem | null>(null);
+  const [addingActivity, setAddingActivity] = useState(false);
   const complete = roadmap.filter((item) => item.status === "Completed").length;
-  const percent = Math.round((complete / roadmap.length) * 100);
+  const percent = roadmap.length ? Math.round((complete / roadmap.length) * 100) : 0;
+  const handleAddActivity = (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const formData = new FormData(event.currentTarget);
+    addActivity({
+      title: String(formData.get("title")).trim(),
+      category: String(formData.get("category")),
+      duration: String(formData.get("duration")).trim() || "Flexible",
+      description: String(formData.get("description")).trim() || "Added to your career roadmap.",
+    });
+    event.currentTarget.reset();
+    setAddingActivity(false);
+  };
   return (
     <div className="page roadmap-page">
       <section className="roadmap-header">
@@ -538,7 +557,42 @@ function RoadmapView({
       </section>
       <div className="roadmap-layout">
         <section className="roadmap-timeline">
-          <div className="timeline-heading"><div><span className="tag">Phase 2</span><h3>Build practical experience</h3><p>Turn your core knowledge into demonstrable work.</p></div><span className="phase-progress">{complete}/{roadmap.length} complete</span></div>
+          <div className="timeline-heading">
+            <div><span className="tag">Phase 2</span><h3>Build practical experience</h3><p>Turn your core knowledge into demonstrable work.</p></div>
+            <div className="timeline-actions">
+              <span className="phase-progress">{complete}/{roadmap.length} complete</span>
+              <AppButton icon="plus" onClick={() => setAddingActivity((current) => !current)}>{addingActivity ? "Cancel" : "Add activity"}</AppButton>
+            </div>
+          </div>
+          {addingActivity && (
+            <form className="roadmap-add-form" onSubmit={handleAddActivity}>
+              <label>
+                Activity name
+                <input name="title" required maxLength={100} placeholder="e.g. Complete a networking fundamentals course" />
+              </label>
+              <div className="roadmap-form-row">
+                <label>
+                  Category
+                  <select name="category" defaultValue="Skill">
+                    <option>Skill</option>
+                    <option>Course</option>
+                    <option>Project</option>
+                    <option>Career prep</option>
+                    <option>Networking</option>
+                  </select>
+                </label>
+                <label>
+                  Duration
+                  <input name="duration" maxLength={40} placeholder="e.g. 3 weeks" />
+                </label>
+              </div>
+              <label>
+                Description
+                <textarea name="description" rows={2} maxLength={240} placeholder="What will you work on?" />
+              </label>
+              <AppButton type="submit">Add to roadmap</AppButton>
+            </form>
+          )}
           {roadmap.filter((item) => item.status !== "Not started").map((item) => {
             const index = roadmap.indexOf(item);
             return (
@@ -627,9 +681,12 @@ function RoadmapView({
             <div className="resource-box"><Icon name="file" /><span><strong>Activity guide</strong><small>Steps, resources, and completion criteria</small></span><Icon name="chevron" /></div>
             <div className="modal-footer">
               <span>Current status: <strong>{selected.status}</strong></span>
-              <AppButton onClick={() => { updateStatus(selected.id); setSelected(null); }}>
-                {selected.status === "Not started" ? "Mark in progress" : selected.status === "In progress" ? "Mark complete" : "Completed"}
-              </AppButton>
+              <div className="activity-actions">
+                <AppButton variant="secondary" onClick={() => { removeActivity(selected.id); setSelected(null); }}>Remove activity</AppButton>
+                <AppButton onClick={() => { updateStatus(selected.id); setSelected(null); }}>
+                  {selected.status === "Not started" ? "Mark in progress" : selected.status === "In progress" ? "Mark complete" : "Completed"}
+                </AppButton>
+              </div>
             </div>
           </section>
         </div>
@@ -747,10 +804,23 @@ export default function App() {
     setProfileSkills((current) => current.filter((item) => item !== skill));
   };
   const addSkill = (skill: string) => {
-    if (!roadmap.some((item) => item.title.includes(skill))) {
-      setRoadmap((current) => [...current, { id: Date.now(), title: `Develop ${skill}`, category: "Skill", duration: "3 weeks", status: "Not started", description: `Build practical ${skill} experience through a guided project selected for your career goal.` }]);
+    const trimmedSkill = skill.trim();
+    if (!trimmedSkill) return;
+    const title = `Develop ${trimmedSkill}`;
+    if (roadmap.some((item) => item.category === "Skill" && item.title.trim().toLowerCase() === title.toLowerCase())) {
+      showToast(`${trimmedSkill} is already on your roadmap`);
+      return;
     }
-    showToast(`${skill} added to your roadmap`);
+    setRoadmap((current) => [...current, { id: Date.now(), title, category: "Skill", duration: "3 weeks", status: "Not started", description: `Build practical ${trimmedSkill} experience through a guided project selected for your career goal.` }]);
+    showToast(`${trimmedSkill} added to your roadmap`);
+  };
+  const addRoadmapActivity = (activity: NewRoadmapItem) => {
+    setRoadmap((current) => [...current, { ...activity, id: Date.now(), status: "Not started" }]);
+    showToast("Activity added to your roadmap");
+  };
+  const removeRoadmapActivity = (id: number) => {
+    setRoadmap((current) => current.filter((item) => item.id !== id));
+    showToast("Activity removed from your roadmap");
   };
   const updateStatus = (id: number) => {
     setRoadmap((current) => current.map((item) => item.id === id ? { ...item, status: item.status === "Not started" ? "In progress" : item.status === "In progress" ? "Completed" : "Completed" } : item));
@@ -782,7 +852,7 @@ export default function App() {
         {view === "home" && <Dashboard setView={setView} jobs={matchedJobs} />}
         {view === "jobs" && <JobsView jobs={matchedJobs} saved={saved} onToggleSave={toggleSave} onAddSkill={addSkill} />}
         {view === "saved" && <SavedView jobs={matchedJobs} saved={saved} onToggleSave={toggleSave} openJobs={() => setView("jobs")} />}
-        {view === "roadmap" && <RoadmapView roadmap={roadmap} updateStatus={updateStatus} courseFile={courseFile} importCourses={importCourses} />}
+        {view === "roadmap" && <RoadmapView roadmap={roadmap} addActivity={addRoadmapActivity} removeActivity={removeRoadmapActivity} updateStatus={updateStatus} courseFile={courseFile} importCourses={importCourses} />}
         {view === "profile" && <ProfileView skills={profileSkills} onAddSkill={addProfileSkill} onRemoveSkill={removeProfileSkill} />}
       </main>
       {toast && <div className="toast"><span><Icon name="check" size={16} /></span>{toast}</div>}

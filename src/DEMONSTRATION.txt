@@ -1,0 +1,107 @@
+CAREERPATH FEATURE DEMONSTRATION
+Interactive roadmap and cybersecurity skill matching
+
+
+1. USER STORY
+
+Source: Issues.md, Issue 1 - "Preparing and organizing" (James), size: large
+
+As a student, I want to be able to organize the skills I need to learn on a roadmap
+so I am prepared for the cybersecurity position I want.
+
+Requirements:
+- Roadmap that a user can interact with
+- Adding skills to the roadmap
+- Seeing how those skills match up to the desired position
+
+Acceptance Criteria (as recorded in Issues.md):
+[x] User can add/remove tasks
+[x] User's skill match updates with new skills/less skills.
+
+
+2. FIGMA DESIGN
+
+Prototype: CareerPath Figma Make
+https://www.figma.com/make/EdSAI5pI6P4PywHSQlehlf/CareerPath?t=g7UT8L5OiUuh3Z8T-0
+
+Relevant view/frame to inspect: My roadmap, including the Cybersecurity Analyst
+skill coverage panel and the add-activity flow. In the prototype, open "My roadmap"
+from the left navigation. The view corresponds to the implemented roadmap behavior
+demonstrated below.
+
+
+
+
+3. SPRINT PLANNING
+
+Sprint 1 feature issue:
+Issue #1 - "Preparing and organizing" (James)
+https://github.com/SuleKalkan/CareerPath/issues/1
+Assignee shown by GitHub: Caleb-Leves
+
+
+4. IMPLEMENTATION - LIVE APPLICATION DEMONSTRATION
+
+
+Demonstrated flow:
+1. Open Explore jobs and view Cybersecurity Analyst Intern at Bank of America.
+2. Its initial skill match was 20% (1 of 5 skills).
+3. Add "Networking" from the missing skills list.
+4. Open My roadmap and expand upcoming activities. "Develop Networking" appears
+   as a planned skill and Networking is labeled Planned in skill coverage.
+5. Open that activity and advance it from Not started to In progress, then Completed.
+6. Networking is then labeled Completed and the job match rises to 40% (2 of 5).
+7. Remove the completed activity. The roadmap updates and the job match returns
+   to 20%.
+
+
+5. TESTING - ACCEPTANCE CRITERIA
+
+Acceptance criterion: User can add/remove tasks.
+Result: Correct - Adding the missing Networking skill created a roadmap activity.
+Removing the completed activity removed it from the roadmap and skill coverage.
+
+Acceptance criterion: User's skill match updates with new skills/less skills.
+Result: Correct - The Cybersecurity Analyst Intern match changed from 20% to 40%
+when Networking was completed, then returned to 20% when the activity was removed.
+
+Manual reproduction:
+- Run "npm install" once, then "npm run dev".
+- Follow the demonstration steps in section 4.
+- Compare the match percentage and skill coverage before and after each change.
+
+
+6. VERSION CONTROL
+
+Repository: https://github.com/SuleKalkan/CareerPath
+
+Feature commits on issueOneBranch (2026-11-03):
+- 38547c6 - Make cybersecurity skill match data-driven
+  https://github.com/SuleKalkan/CareerPath/commit/38547c6b7d8746e5230cec37ac14eaf100b0812e
+- 7ece943 - Make cybersecurity skill matching data-driven
+  https://github.com/SuleKalkan/CareerPath/commit/7ece943c71816df126f83903b4cefd11832e8535
+- 9a4865e - Add roadmap activity management
+  https://github.com/SuleKalkan/CareerPath/commit/9a4865ef7a396aafe69980ab60cf92ec063fe308
+- 787325c - Show cybersecurity skill coverage on roadmap
+  https://github.com/SuleKalkan/CareerPath/commit/787325ceb2bd7e84cddeff347a65c89b49c0cbd4
+- a2d35d1 - Made it so that completing tasks affects skill match
+  https://github.com/SuleKalkan/CareerPath/commit/a2d35d1c98447bedb37199c08c577e2df1ec9b61
+
+Pull request #5 - "Issue one branch. Feature added for Sprint 1"
+https://github.com/SuleKalkan/CareerPath/pull/5
+Status when checked: OPEN, not merged.
+
+
+7. AI-ASSISTED DEVELOPMENT
+
+Copilot: Three of the five feature commits listed above include a
+"Co-authored-by: Copilot" trailer. This is repository evidence of Copilot-assisted
+implementation. The co-authored changes include skill matching, roadmap activity
+management, and roadmap skill coverage. The final completion-based match update is
+in a separate commit without a Copilot co-author trailer.
+
+Figma MCP: It was used to inspect the linked Figma Make context and identify the
+prototype/source reference. The Make context response exposed source-resource links,
+but not a rendered frame image in this environment. The prototype remains the
+visual reference for the roadmap and skill-coverage screen; no claim is made here
+that Figma MCP edited or generated the application code.

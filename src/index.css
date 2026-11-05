@@ -202,6 +202,13 @@ button { cursor: pointer; }
 .roadmap-layout { display: grid; grid-template-columns: minmax(0,1fr) 310px; gap: 22px; }
 .roadmap-timeline { border: 1px solid var(--line); background: #fff; border-radius: var(--radius); padding: 22px; }
 .roadmap-timeline .timeline-heading { display: flex; justify-content: space-between; margin-bottom: 20px; }.roadmap-timeline .timeline-heading h3 { font-size: 18px; margin: 7px 0 3px; }.roadmap-timeline .timeline-heading p { color: var(--muted); font-size: 11px; }.roadmap-timeline .phase-progress { color: var(--green); font-size: 10px; font-weight: 700; }
+.timeline-actions { display: flex; align-items: center; gap: 12px; }
+.roadmap-add-form { display: grid; gap: 12px; margin: 0 0 20px 37px; padding: 16px; border: 1px solid var(--line); border-radius: 12px; background: var(--green-pale); }
+.roadmap-add-form label { display: grid; gap: 6px; color: var(--ink-soft); font-size: 10px; font-weight: 700; }
+.roadmap-add-form input, .roadmap-add-form select, .roadmap-add-form textarea { width: 100%; min-width: 0; border: 1px solid var(--line-dark); border-radius: 8px; padding: 9px 10px; background: #fff; color: var(--ink); font-size: 11px; outline: 0; }
+.roadmap-add-form textarea { resize: vertical; }
+.roadmap-add-form input:focus, .roadmap-add-form select:focus, .roadmap-add-form textarea:focus { border-color: var(--green); box-shadow: 0 0 0 2px var(--green-soft); }
+.roadmap-form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .roadmap-timeline .timeline-item { display: grid; grid-template-columns: 33px 1fr; }
 .roadmap-timeline .timeline-rail { display: flex; flex-direction: column; align-items: center; }
 .roadmap-timeline .timeline-rail span { z-index: 1; width: 25px; height: 25px; border-radius: 50%; display: grid; place-items: center; border: 1px solid var(--line-dark); background: #fff; color: var(--muted); font-size: 9px; font-weight: 800; }
@@ -222,12 +229,22 @@ button { cursor: pointer; }
 .roadmap-timeline .timeline-more[open] .when-closed { display: none; }
 .roadmap-timeline .timeline-more[open] .when-open { display: inline; }
 .roadmap-layout aside { display: flex; flex-direction: column; gap: 16px; }
+.skill-coverage { padding: 22px; }
+.skill-coverage h3 { font-size: 16px; margin: 8px 0 6px; }
+.skill-coverage > p { color: var(--muted); font-size: 11px; line-height: 1.55; margin-bottom: 14px; }
+.coverage-list { border-top: 1px solid var(--line); }
+.coverage-row { min-height: 40px; display: flex; align-items: center; justify-content: space-between; gap: 8px; border-bottom: 1px solid var(--line); color: var(--ink-soft); font-size: 11px; }
+.coverage-status { border-radius: 20px; padding: 5px 8px; font-size: 9px; font-weight: 700; white-space: nowrap; }
+.coverage-status.acquired { color: var(--green); background: var(--green-soft); }
+.coverage-status.planned { color: var(--ink-soft); background: var(--surface-soft); }
+.coverage-add { display: inline-flex; align-items: center; gap: 3px; border: 0; border-radius: 6px; padding: 5px 8px; background: var(--green-soft); color: var(--green); font-size: 9px; font-weight: 700; }
 .roadmap-courses { padding: 22px; }.roadmap-courses h3 { font-size: 16px; margin: 12px 0 6px; }.roadmap-courses > div > p { color: var(--muted); font-size: 11px; line-height: 1.55; }
 .roadmap-courses .course-upload { min-height: 92px; margin-top: 17px; padding: 14px; cursor: pointer; }.roadmap-courses .course-upload input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }.roadmap-courses .course-upload > span { width: 36px; height: 36px; }.roadmap-courses .course-upload div { min-width: 0; }.roadmap-courses .course-upload strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .roadmap-aside, .advisor-card { padding: 22px; }.roadmap-aside h3 { font-size: 16px; margin: 14px 0 6px; }.roadmap-aside > p, .advisor-card p { color: var(--muted); font-size: 11px; line-height: 1.55; margin-bottom: 18px; }.roadmap-aside > div { display: flex; justify-content: space-between; border-top: 1px solid var(--line); padding: 12px 0; font-size: 10px; }.roadmap-aside > div span { color: var(--muted); }.roadmap-aside .btn { width: 100%; margin-top: 8px; }
 .advisor-card { background: var(--navy); color: #fff; border: 0; }.advisor-card .eyebrow { color: var(--gold); }.advisor-card h3 { font-size: 16px; margin: 5px 0; }.advisor-card p { color: rgba(255,255,255,.68); }.advisor-card > button { border: 0; padding: 0; background: transparent; color: var(--gold); font-size: 11px; font-weight: 700; display: flex; align-items: center; }
 .advisor-avatars { width: 43px; height: 43px; border-radius: 50%; background: var(--gold); color: #fff; display: grid; place-items: center; font-size: 10px; font-weight: 800; margin-bottom: 15px; position: relative; }.advisor-avatars .online { position: absolute; width: 11px; height: 11px; border-radius: 50%; background: #fff; border: 2px solid var(--navy); right: 0; bottom: 1px; }
 .modal-layer { position: fixed; z-index: 50; inset: 0; display: grid; place-items: center; padding: 20px; }.modal-scrim { position: absolute; inset: 0; border: 0; background: rgba(10,32,24,.58); backdrop-filter: blur(3px); }.activity-modal { position: relative; z-index: 1; width: min(560px,100%); background: #fff; border-radius: 22px; padding: 32px; box-shadow: var(--shadow-high); }.modal-close { position: absolute; top: 20px; right: 20px; }.activity-modal > .eyebrow { margin-top: 18px; }.activity-modal h2 { font-size: 25px; margin: 8px 0; }.activity-modal > p { color: var(--ink-soft); font-size: 13px; line-height: 1.6; }.resource-box { border: 1px solid var(--line); border-radius: 12px; margin: 23px 0; padding: 15px; display: grid; grid-template-columns: auto 1fr auto; gap: 11px; align-items: center; color: var(--green); }.resource-box strong,.resource-box small { display: block; }.resource-box strong { color: var(--ink); font-size: 12px; }.resource-box small { color: var(--muted); font-size: 9px; margin-top: 3px; }.modal-footer { display: flex; justify-content: space-between; align-items: center; padding-top: 18px; border-top: 1px solid var(--line); }.modal-footer > span { color: var(--muted); font-size: 10px; }.modal-footer > span strong { color: var(--ink); }
+.activity-actions { display: flex; gap: 8px; }
 
 .page-title { margin: 5px 0 28px; }
 .saved-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 16px; }
@@ -281,7 +298,7 @@ button { cursor: pointer; }
   .job-detail-hero { align-items: flex-start; flex-wrap: wrap; }.job-title-block { min-width: calc(100% - 90px); }.detail-actions { width: 100%; }.detail-actions .btn { flex: 1; }
   .skills-columns { grid-template-columns: 1fr; }
   .roadmap-header { align-items: flex-start; flex-direction: column; gap: 20px; }.roadmap-score { width: 100%; }
-  .roadmap-timeline { padding: 20px 14px; }.timeline-heading { gap: 10px; }.timeline-card { grid-template-columns: 1fr auto; }.timeline-card > svg { display: none; }.timeline-card p { display: none; }
+  .roadmap-timeline { padding: 20px 14px; }.timeline-heading { gap: 10px; }.roadmap-timeline .timeline-heading { align-items: flex-start; }.timeline-actions { align-items: flex-end; flex-direction: column-reverse; gap: 8px; }.roadmap-add-form { margin-left: 0; }.timeline-card { grid-template-columns: 1fr auto; }.timeline-card > svg { display: none; }.timeline-card p { display: none; }
   .roadmap-layout aside { grid-template-columns: 1fr; }
   .profile-layout { grid-template-columns: 1fr; }.profile-summary { position: static; }.details-grid { grid-template-columns: 1fr; }
   .upload-zone { grid-template-columns: auto 1fr; }.upload-zone > b { grid-column: 2; }
@@ -296,6 +313,6 @@ button { cursor: pointer; }
   .search-bar { padding-left: 13px; }.filter-button { padding: 0 8px; font-size: 0; }
   .detail-actions { flex-direction: column; }
   .timeline-card { padding: 13px; }
-  .activity-modal { padding: 25px 20px; }.modal-footer { align-items: stretch; flex-direction: column; gap: 14px; }
+  .activity-modal { padding: 25px 20px; }.modal-footer { align-items: stretch; flex-direction: column; gap: 14px; }.activity-actions { flex-direction: column-reverse; }
   .inline-form { flex-wrap: wrap; }.inline-form input { width: 100%; flex-basis: 100%; min-height: 42px; }
 }

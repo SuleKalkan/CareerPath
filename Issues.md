@@ -12,13 +12,13 @@ Adding skills to the roadmap
 Seeing how those skills match up to the desired position
 
 Acceptance Criteria:
-[]User can add/remove tasks
-[]User's skill match updates with new skills/less skills.
+[x] User can add/remove tasks
+[x] User's skill match updates with new skills/less skills.
     
 Tasks:
-[]Implement roadmap add/remove feature
-[]Modify skill match feature to update on skills.
-[]Logic for skill matching needs work.
+[x] Implement roadmap add/remove feature
+[x] Modify skill match feature to update on skills.
+[x] Logic for skill matching needs work.
 
 Issue 2 — “Exploring career options” (Jane) size:large
 

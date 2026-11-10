@@ -1,0 +1,87 @@
+@startuml CareerPathCourseImport
+title CareerPath — Import and Confirm Completed Courses
+autonumber
+hide footbox
+skinparam shadowing false
+skinparam sequence {
+  ArrowColor #334155
+  ActorBorderColor #334155
+  LifeLineBorderColor #94A3B8
+  LifeLineBackgroundColor #F8FAFC
+  ParticipantBorderColor #475569
+  ParticipantBackgroundColor #F1F5F9
+  ParticipantFontColor #0F172A
+  BoxBorderColor #CBD5E1
+  BoxBackgroundColor #F8FAFC
+}
+
+actor Student
+boundary "Roadmap UI" as UI
+control "CourseImportService" as Service
+participant "TranscriptParser" as Parser
+participant "Prisma ORM" as ORM
+database "PostgreSQL" as DB
+
+Student -> UI: Select transcript/course history file
+UI -> Service: upload(file, authenticatedUserId)
+activate Service
+
+Service -> Service: Validate file type, size and readability
+alt Unsupported or unreadable file
+  Service --> UI: Upload error with accepted formats
+  UI --> Student: Display clear error; keep existing roadmap
+else File is supported
+  Service -> ORM: Create CourseImport(status=PROCESSING)
+  ORM -> DB: INSERT course_import
+  DB --> ORM: import record
+  ORM --> Service: importId
+
+  Service -> Parser: Extract course rows(file)
+  activate Parser
+  Parser --> Service: Parsed rows + confidence / recognition
+  deactivate Parser
+
+  Service -> ORM: Save ExtractedCourse rows and set REVIEW_REQUIRED
+  ORM -> DB: INSERT extracted_courses; UPDATE course_import
+  DB --> ORM: Saved extraction records
+  ORM --> Service: Import review data
+  Service --> UI: Import id + editable extracted rows
+  UI --> Student: Show recognized and flagged courses for review
+
+  opt Student edits or removes extracted rows
+    Student -> UI: Correct fields / remove row
+    UI -> Service: Update pending review rows
+    Service -> ORM: Persist row edits and review statuses
+    ORM -> DB: UPDATE extracted_courses
+    DB --> ORM: Updated rows
+    ORM --> Service: Updated review data
+  end
+
+  Student -> UI: Confirm reviewed courses
+  UI -> Service: confirmImport(importId, selectedRows)
+  Service -> ORM: Begin transaction
+  ORM -> DB: BEGIN
+  loop Each selected confirmed row
+    Service -> ORM: Find by userId + deduplicationKey
+    ORM -> DB: SELECT student_courses
+    DB --> ORM: Existing record or none
+    alt No duplicate and recognized or user-confirmed
+      Service -> ORM: Insert StudentCourse + linked completion activity
+      ORM -> DB: INSERT student_courses; INSERT/UPSERT roadmap_activities
+      DB --> ORM: Persisted course and completed activity
+    else Duplicate
+      Service -> ORM: Skip duplicate; mark extraction as duplicate/reviewed
+      ORM -> DB: UPDATE extracted_courses
+      DB --> ORM: Updated review status
+    end
+  end
+  Service -> ORM: Mark import CONFIRMED
+  ORM -> DB: UPDATE course_imports; COMMIT
+  DB --> ORM: Transaction committed
+  ORM --> Service: Confirmation result and roadmap progress
+  Service --> UI: Imported, skipped and flagged row summary
+  UI --> Student: Show confirmation and updated roadmap
+end
+
+deactivate Service
+@enduml

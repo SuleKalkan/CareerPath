@@ -1,0 +1,359 @@
+@startuml CareerPathDomainModel
+!pragma layout elk
+title CareerPath — Relational Domain Model
+left to right direction
+hide methods
+skinparam classAttributeIconSize 0
+skinparam packageStyle rectangle
+skinparam linetype ortho
+skinparam shadowing false
+skinparam class {
+  BackgroundColor #F8FAFC
+  BorderColor #475569
+  ArrowColor #475569
+}
+skinparam package {
+  BackgroundColor #F1F5F9
+  BorderColor #94A3B8
+}
+
+package "Identity and student profile" {
+  class User {
+    +id: UUID {PK}
+    email: varchar(320) {UQ}
+    displayName: varchar(160)
+    createdAt: timestamptz
+    updatedAt: timestamptz
+  }
+
+  class StudentProfile {
+    +id: UUID {PK}
+    userId: UUID {FK, UQ}
+    university: varchar(200)?
+    college: varchar(200)?
+    concentration: varchar(160)?
+    academicLevel: varchar(80)?
+    expectedGraduation: date?
+    targetCareerId: UUID? {FK}
+    createdAt: timestamptz
+    updatedAt: timestamptz
+  }
+
+  class Skill {
+    +id: UUID {PK}
+    name: varchar(120)
+    normalizedName: varchar(120) {UQ}
+    description: text?
+    createdAt: timestamptz
+  }
+
+  class StudentSkill {
+    +userId: UUID {PK, FK}
+    +skillId: UUID {PK, FK}
+    proficiency: StudentProficiency?
+    createdAt: timestamptz
+  }
+
+  class Interest {
+    +id: UUID {PK}
+    name: varchar(120)
+    normalizedName: varchar(120) {UQ}
+  }
+
+  class StudentInterest {
+    +userId: UUID {PK, FK}
+    +interestId: UUID {PK, FK}
+    createdAt: timestamptz
+  }
+}
+
+package "Careers and preparation" {
+  class Career {
+    +id: UUID {PK}
+    title: varchar(160)
+    normalizedTitle: varchar(160) {UQ}
+    description: text
+    responsibilities: text[]
+    educationExpectations: text
+    createdAt: timestamptz
+    updatedAt: timestamptz
+  }
+
+  class CareerSkill {
+    +careerId: UUID {PK, FK}
+    +skillId: UUID {PK, FK}
+    importance: decimal(5,2)
+  }
+
+  class CareerPreparationStep {
+    +id: UUID {PK}
+    careerId: UUID {FK}
+    skillId: UUID? {FK}
+    title: varchar(160)
+    description: text
+    category: ActivityCategory
+    sequence: int
+  }
+}
+
+package "Roadmap" {
+  class Roadmap {
+    +id: UUID {PK}
+    userId: UUID {FK}
+    careerId: UUID {FK}
+    title: varchar(160)
+    createdAt: timestamptz
+    updatedAt: timestamptz
+  }
+
+  class RoadmapActivity {
+    +id: UUID {PK}
+    roadmapId: UUID {FK}
+    preparationStepId: UUID? {FK}
+    skillId: UUID? {FK}
+    studentCourseId: UUID? {FK, UQ}
+    title: varchar(100)
+    category: ActivityCategory
+    duration: varchar(40)
+    description: varchar(240)
+    status: ActivityStatus
+    position: int
+    createdAt: timestamptz
+    updatedAt: timestamptz
+  }
+}
+
+package "Course import and academic history" {
+  class Course {
+    +id: UUID {PK}
+    institutionName: varchar(200)
+    courseCode: varchar(80)?
+    title: varchar(200)
+    identityKey: varchar(240)
+    credits: decimal(4,1)?
+    createdAt: timestamptz
+  }
+
+  class CourseSkill {
+    +courseId: UUID {PK, FK}
+    +skillId: UUID {PK, FK}
+  }
+
+  class CourseImport {
+    +id: UUID {PK}
+    userId: UUID {FK}
+    fileName: varchar(255)
+    mediaType: varchar(120)
+    storageKey: varchar(500) {UQ}
+    status: CourseImportStatus
+    errorMessage: text?
+    createdAt: timestamptz
+    updatedAt: timestamptz
+  }
+
+  class ExtractedCourse {
+    +id: UUID {PK}
+    courseImportId: UUID {FK}
+    recognizedCourseId: UUID? {FK}
+    studentCourseId: UUID? {FK, UQ}
+    rawText: text
+    institutionName: varchar(200)?
+    courseCode: varchar(80)?
+    courseTitle: varchar(200)?
+    term: varchar(80)?
+    grade: varchar(40)?
+    confidence: decimal(5,4)?
+    reviewStatus: ExtractedCourseReviewStatus
+    reviewNote: text?
+    createdAt: timestamptz
+  }
+
+  class StudentCourse {
+    +id: UUID {PK}
+    userId: UUID {FK}
+    courseId: UUID? {FK}
+    sourceImportId: UUID? {FK}
+    institutionName: varchar(200)
+    courseCode: varchar(80)?
+    courseTitle: varchar(200)
+    term: varchar(80)?
+    grade: varchar(40)?
+    deduplicationKey: varchar(300)
+    completionStatus: CourseCompletionStatus
+    createdAt: timestamptz
+  }
+}
+
+package "Jobs" {
+  class Employer {
+    +id: UUID {PK}
+    name: varchar(200)
+    normalizedName: varchar(200) {UQ}
+    createdAt: timestamptz
+  }
+
+  class JobOpportunity {
+    +id: UUID {PK}
+    employerId: UUID {FK}
+    title: varchar(200)
+    description: text
+    location: varchar(200)
+    type: JobType
+    status: JobStatus
+    postedAt: timestamptz
+    closesAt: timestamptz?
+    externalUrl: varchar(2048)?
+    createdAt: timestamptz
+    updatedAt: timestamptz
+  }
+
+  class JobSkill {
+    +jobId: UUID {PK, FK}
+    +skillId: UUID {PK, FK}
+    isRequired: boolean
+    importance: decimal(5,2)
+  }
+
+  class SavedJob {
+    +userId: UUID {PK, FK}
+    +jobId: UUID {PK, FK}
+    savedAt: timestamptz
+  }
+}
+
+enum StudentProficiency {
+  BEGINNER
+  INTERMEDIATE
+  ADVANCED
+  EXPERT
+}
+
+enum ActivityCategory {
+  SKILL
+  COURSE
+  PROJECT
+  CAREER_PREP
+  NETWORKING
+  TRANSFER_CREDIT
+  OTHER
+}
+
+enum ActivityStatus {
+  NOT_STARTED
+  IN_PROGRESS
+  COMPLETED
+}
+
+enum CourseCompletionStatus {
+  COMPLETED
+  TRANSFERRED
+  IN_PROGRESS
+}
+
+enum CourseImportStatus {
+  UPLOADED
+  PROCESSING
+  REVIEW_REQUIRED
+  CONFIRMED
+  FAILED
+}
+
+enum ExtractedCourseReviewStatus {
+  PENDING
+  RECOGNIZED
+  UNRECOGNIZED
+  CONFIRMED
+  REMOVED
+}
+
+enum JobType {
+  INTERNSHIP
+  CO_OP
+  ENTRY_LEVEL
+  FULL_TIME
+  PART_TIME
+  CONTRACT
+  OTHER
+}
+
+enum JobStatus {
+  DRAFT
+  ACTIVE
+  CLOSED
+}
+
+User "1" *-- "0..1" StudentProfile : profile
+User "1" *-- "0..*" StudentSkill : owns
+Skill "1" -- "0..*" StudentSkill : measured as
+User "1" *-- "0..*" StudentInterest : owns
+Interest "1" -- "0..*" StudentInterest : selected as
+
+StudentProfile "0..*" --> "0..1" Career : target career
+Career "1" *-- "0..*" CareerSkill : requires
+Skill "1" -- "0..*" CareerSkill : required by
+Career "1" *-- "0..*" CareerPreparationStep : recommends
+Skill "0..1" <-- "0..*" CareerPreparationStep : develops
+
+User "1" *-- "0..*" Roadmap : owns
+Career "1" -- "0..*" Roadmap : goal for
+Roadmap "1" *-- "0..*" RoadmapActivity : contains
+CareerPreparationStep "0..1" <-- "0..*" RoadmapActivity : based on
+Skill "0..1" <-- "0..*" RoadmapActivity : develops
+StudentCourse "0..1" <-- "0..1" RoadmapActivity : represents completion
+
+Course "1" *-- "0..*" CourseSkill : maps
+Skill "1" -- "0..*" CourseSkill : taught by
+User "1" *-- "0..*" CourseImport : uploads
+CourseImport "1" *-- "0..*" ExtractedCourse : extracts
+Course "0..1" <-- "0..*" ExtractedCourse : recognized as
+StudentCourse "0..1" <-- "0..1" ExtractedCourse : confirms to
+User "1" *-- "0..*" StudentCourse : completes
+Course "0..1" <-- "0..*" StudentCourse : catalog match
+CourseImport "0..1" <-- "0..*" StudentCourse : source
+
+Employer "1" -- "0..*" JobOpportunity : posts
+JobOpportunity "1" *-- "0..*" JobSkill : requires
+Skill "1" -- "0..*" JobSkill : required by
+User "1" *-- "0..*" SavedJob : saves
+JobOpportunity "1" -- "0..*" SavedJob : saved by
+
+note right of StudentProfile
+  userId is unique: at most one profile per user.
+  expectedGraduation is a calendar date.
+end note
+
+note right of Skill
+  normalizedName is unique; normalize case and
+  surrounding whitespace before insert/update.
+end note
+
+note right of Roadmap
+  Unique(userId, careerId): at most one roadmap
+  per student and career in this schema.
+end note
+
+note bottom of RoadmapActivity
+  Unique(roadmapId, preparationStepId) prevents
+  adding the same recommended step twice.
+  Unique studentCourseId: one activity per course.
+  User-added activities may repeat.
+end note
+
+note bottom of StudentCourse
+  Unique(userId, deduplicationKey) prevents
+  duplicate confirmed course records per student.
+  Match/coverage percentages are derived, not stored.
+end note
+
+note bottom of ExtractedCourse
+  confidence is NULL or between 0 and 1.
+  Unrecognized rows remain reviewable; only
+  confirmed rows create StudentCourse records.
+end note
+
+note bottom of JobOpportunity
+  closesAt is NULL or greater than/equal to postedAt.
+  Job match is derived from required skills and
+  acquired student skills.
+end note
+@enduml

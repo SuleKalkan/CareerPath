@@ -1,0 +1,410 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum StudentProficiency {
+  BEGINNER
+  INTERMEDIATE
+  ADVANCED
+  EXPERT
+
+  @@map("student_proficiency")
+}
+
+enum ActivityCategory {
+  SKILL
+  COURSE
+  PROJECT
+  CAREER_PREP
+  NETWORKING
+  TRANSFER_CREDIT
+  OTHER
+
+  @@map("activity_category")
+}
+
+enum ActivityStatus {
+  NOT_STARTED
+  IN_PROGRESS
+  COMPLETED
+
+  @@map("activity_status")
+}
+
+enum CourseCompletionStatus {
+  COMPLETED
+  TRANSFERRED
+  IN_PROGRESS
+
+  @@map("course_completion_status")
+}
+
+enum CourseImportStatus {
+  UPLOADED
+  PROCESSING
+  REVIEW_REQUIRED
+  CONFIRMED
+  FAILED
+
+  @@map("course_import_status")
+}
+
+enum ExtractedCourseReviewStatus {
+  PENDING
+  RECOGNIZED
+  UNRECOGNIZED
+  CONFIRMED
+  REMOVED
+
+  @@map("extracted_course_review_status")
+}
+
+enum JobType {
+  INTERNSHIP
+  CO_OP
+  ENTRY_LEVEL
+  FULL_TIME
+  PART_TIME
+  CONTRACT
+  OTHER
+
+  @@map("job_type")
+}
+
+enum JobStatus {
+  DRAFT
+  ACTIVE
+  CLOSED
+
+  @@map("job_status")
+}
+
+model User {
+  id            String          @id @default(uuid()) @db.Uuid
+  email         String          @unique @db.VarChar(320)
+  displayName   String          @map("display_name") @db.VarChar(160)
+  createdAt     DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime        @updatedAt @map("updated_at") @db.Timestamptz(6)
+  profile       StudentProfile?
+  skills        StudentSkill[]
+  interests     StudentInterest[]
+  roadmaps      Roadmap[]
+  courses       StudentCourse[]
+  courseImports CourseImport[]
+  savedJobs     SavedJob[]
+
+  @@map("users")
+}
+
+model StudentProfile {
+  id                  String   @id @default(uuid()) @db.Uuid
+  userId              String   @unique @map("user_id") @db.Uuid
+  university          String?  @db.VarChar(200)
+  college             String?  @db.VarChar(200)
+  concentration       String?  @db.VarChar(160)
+  academicLevel       String?  @map("academic_level") @db.VarChar(80)
+  expectedGraduation  DateTime? @map("expected_graduation") @db.Date
+  targetCareerId      String?  @map("target_career_id") @db.Uuid
+  createdAt           DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt           DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  user                User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  targetCareer        Career?  @relation(fields: [targetCareerId], references: [id], onDelete: SetNull)
+
+  @@index([targetCareerId])
+  @@map("student_profiles")
+}
+
+model Skill {
+  id               String            @id @default(uuid()) @db.Uuid
+  name             String            @db.VarChar(120)
+  normalizedName   String            @unique @map("normalized_name") @db.VarChar(120)
+  description      String?           @db.Text
+  createdAt        DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+  studentSkills    StudentSkill[]
+  careerSkills     CareerSkill[]
+  jobSkills        JobSkill[]
+  courseSkills     CourseSkill[]
+  roadmapActivities RoadmapActivity[]
+  preparationSteps CareerPreparationStep[]
+
+  @@map("skills")
+}
+
+model Interest {
+  id             String            @id @default(uuid()) @db.Uuid
+  name           String            @db.VarChar(120)
+  normalizedName String            @unique @map("normalized_name") @db.VarChar(120)
+  students       StudentInterest[]
+
+  @@map("interests")
+}
+
+model StudentSkill {
+  userId      String            @map("user_id") @db.Uuid
+  skillId     String            @map("skill_id") @db.Uuid
+  proficiency StudentProficiency?
+  createdAt   DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+  user        User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  skill       Skill             @relation(fields: [skillId], references: [id], onDelete: Cascade)
+
+  @@id([userId, skillId])
+  @@index([skillId])
+  @@map("student_skills")
+}
+
+model StudentInterest {
+  userId     String   @map("user_id") @db.Uuid
+  interestId String   @map("interest_id") @db.Uuid
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  interest   Interest @relation(fields: [interestId], references: [id], onDelete: Cascade)
+
+  @@id([userId, interestId])
+  @@index([interestId])
+  @@map("student_interests")
+}
+
+model Career {
+  id                    String                   @id @default(uuid()) @db.Uuid
+  title                 String                   @db.VarChar(160)
+  normalizedTitle       String                   @unique @map("normalized_title") @db.VarChar(160)
+  description           String                   @db.Text
+  responsibilities      String[]                 @default([])
+  educationExpectations String                   @map("education_expectations") @db.Text
+  createdAt             DateTime                 @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt             DateTime                 @updatedAt @map("updated_at") @db.Timestamptz(6)
+  profiles              StudentProfile[]
+  careerSkills          CareerSkill[]
+  preparationSteps      CareerPreparationStep[]
+  roadmaps              Roadmap[]
+
+  @@map("careers")
+}
+
+model CareerSkill {
+  careerId  String  @map("career_id") @db.Uuid
+  skillId   String  @map("skill_id") @db.Uuid
+  importance Decimal @default(1.00) @db.Decimal(5, 2)
+  career    Career  @relation(fields: [careerId], references: [id], onDelete: Cascade)
+  skill     Skill   @relation(fields: [skillId], references: [id], onDelete: Cascade)
+
+  @@id([careerId, skillId])
+  @@index([skillId])
+  @@map("career_skills")
+}
+
+model CareerPreparationStep {
+  id          String           @id @default(uuid()) @db.Uuid
+  careerId    String           @map("career_id") @db.Uuid
+  skillId     String?          @map("skill_id") @db.Uuid
+  title       String           @db.VarChar(160)
+  description String           @db.Text
+  category    ActivityCategory @default(CAREER_PREP)
+  sequence    Int              @default(0)
+  career      Career           @relation(fields: [careerId], references: [id], onDelete: Cascade)
+  skill       Skill?           @relation(fields: [skillId], references: [id], onDelete: SetNull)
+  activities  RoadmapActivity[]
+
+  @@unique([careerId, sequence])
+  @@index([skillId])
+  @@map("career_preparation_steps")
+}
+
+model Roadmap {
+  id        String            @id @default(uuid()) @db.Uuid
+  userId    String            @map("user_id") @db.Uuid
+  careerId  String            @map("career_id") @db.Uuid
+  title     String            @db.VarChar(160)
+  createdAt DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime          @updatedAt @map("updated_at") @db.Timestamptz(6)
+  user      User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  career    Career            @relation(fields: [careerId], references: [id], onDelete: Restrict)
+  activities RoadmapActivity[]
+
+  @@unique([userId, careerId])
+  @@index([careerId])
+  @@map("roadmaps")
+}
+
+model RoadmapActivity {
+  id                 String           @id @default(uuid()) @db.Uuid
+  roadmapId          String           @map("roadmap_id") @db.Uuid
+  preparationStepId  String?          @map("preparation_step_id") @db.Uuid
+  skillId            String?          @map("skill_id") @db.Uuid
+  studentCourseId    String?          @unique @map("student_course_id") @db.Uuid
+  title              String           @db.VarChar(100)
+  category           ActivityCategory
+  duration           String           @default("Flexible") @db.VarChar(40)
+  description        String           @db.VarChar(240)
+  status             ActivityStatus   @default(NOT_STARTED)
+  position           Int              @default(0)
+  createdAt          DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt          DateTime         @updatedAt @map("updated_at") @db.Timestamptz(6)
+  roadmap            Roadmap          @relation(fields: [roadmapId], references: [id], onDelete: Cascade)
+  preparationStep    CareerPreparationStep? @relation(fields: [preparationStepId], references: [id], onDelete: SetNull)
+  skill              Skill?           @relation(fields: [skillId], references: [id], onDelete: SetNull)
+  studentCourse      StudentCourse?   @relation(fields: [studentCourseId], references: [id], onDelete: SetNull)
+
+  @@unique([roadmapId, preparationStepId])
+  @@index([roadmapId, position])
+  @@index([skillId, status])
+  @@map("roadmap_activities")
+}
+
+model Course {
+  id                String        @id @default(uuid()) @db.Uuid
+  institutionName   String        @map("institution_name") @db.VarChar(200)
+  courseCode        String?       @map("course_code") @db.VarChar(80)
+  title             String        @db.VarChar(200)
+  identityKey       String        @map("identity_key") @db.VarChar(240)
+  credits           Decimal?      @db.Decimal(4, 1)
+  createdAt         DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+  studentCourses    StudentCourse[]
+  extractedCourses  ExtractedCourse[] @relation("RecognizedCourse")
+  skills            CourseSkill[]
+
+  @@unique([institutionName, identityKey])
+  @@index([courseCode])
+  @@map("courses")
+}
+
+model CourseSkill {
+  courseId String @map("course_id") @db.Uuid
+  skillId  String @map("skill_id") @db.Uuid
+  course   Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  skill    Skill  @relation(fields: [skillId], references: [id], onDelete: Cascade)
+
+  @@id([courseId, skillId])
+  @@index([skillId])
+  @@map("course_skills")
+}
+
+model CourseImport {
+  id           String            @id @default(uuid()) @db.Uuid
+  userId       String            @map("user_id") @db.Uuid
+  fileName     String            @map("file_name") @db.VarChar(255)
+  mediaType    String            @map("media_type") @db.VarChar(120)
+  storageKey   String            @unique @map("storage_key") @db.VarChar(500)
+  status       CourseImportStatus @default(UPLOADED)
+  errorMessage String?           @map("error_message") @db.Text
+  createdAt    DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime          @updatedAt @map("updated_at") @db.Timestamptz(6)
+  user         User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  extractedCourses ExtractedCourse[]
+  studentCourses StudentCourse[]
+
+  @@index([userId, createdAt])
+  @@index([status])
+  @@map("course_imports")
+}
+
+model ExtractedCourse {
+  id                 String                     @id @default(uuid()) @db.Uuid
+  courseImportId     String                     @map("course_import_id") @db.Uuid
+  recognizedCourseId String?                    @map("recognized_course_id") @db.Uuid
+  studentCourseId    String?                    @unique @map("student_course_id") @db.Uuid
+  rawText            String                     @map("raw_text") @db.Text
+  institutionName    String?                    @map("institution_name") @db.VarChar(200)
+  courseCode         String?                    @map("course_code") @db.VarChar(80)
+  courseTitle        String?                    @map("course_title") @db.VarChar(200)
+  term               String?                    @db.VarChar(80)
+  grade              String?                    @db.VarChar(40)
+  confidence         Decimal?                   @db.Decimal(5, 4)
+  reviewStatus       ExtractedCourseReviewStatus @default(PENDING) @map("review_status")
+  reviewNote         String?                    @map("review_note") @db.Text
+  createdAt          DateTime                   @default(now()) @map("created_at") @db.Timestamptz(6)
+  courseImport       CourseImport               @relation(fields: [courseImportId], references: [id], onDelete: Cascade)
+  recognizedCourse   Course?                    @relation("RecognizedCourse", fields: [recognizedCourseId], references: [id], onDelete: SetNull)
+  studentCourse      StudentCourse?             @relation(fields: [studentCourseId], references: [id], onDelete: SetNull)
+
+  @@index([courseImportId, reviewStatus])
+  @@index([recognizedCourseId])
+  @@map("extracted_courses")
+}
+
+model StudentCourse {
+  id                String                @id @default(uuid()) @db.Uuid
+  userId            String                @map("user_id") @db.Uuid
+  courseId          String?               @map("course_id") @db.Uuid
+  sourceImportId    String?               @map("source_import_id") @db.Uuid
+  institutionName   String                @map("institution_name") @db.VarChar(200)
+  courseCode        String?               @map("course_code") @db.VarChar(80)
+  courseTitle       String                @map("course_title") @db.VarChar(200)
+  term              String?               @db.VarChar(80)
+  grade             String?               @db.VarChar(40)
+  deduplicationKey  String                @map("deduplication_key") @db.VarChar(300)
+  completionStatus  CourseCompletionStatus @default(COMPLETED) @map("completion_status")
+  createdAt         DateTime              @default(now()) @map("created_at") @db.Timestamptz(6)
+  user              User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  course            Course?               @relation(fields: [courseId], references: [id], onDelete: SetNull)
+  sourceImport      CourseImport?          @relation(fields: [sourceImportId], references: [id], onDelete: SetNull)
+  extraction        ExtractedCourse?
+  roadmapActivity   RoadmapActivity?
+
+  @@unique([userId, deduplicationKey])
+  @@index([userId, completionStatus])
+  @@index([courseId])
+  @@map("student_courses")
+}
+
+model Employer {
+  id             String           @id @default(uuid()) @db.Uuid
+  name           String           @db.VarChar(200)
+  normalizedName String           @unique @map("normalized_name") @db.VarChar(200)
+  createdAt      DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  jobs           JobOpportunity[]
+
+  @@map("employers")
+}
+
+model JobOpportunity {
+  id             String      @id @default(uuid()) @db.Uuid
+  employerId     String      @map("employer_id") @db.Uuid
+  title          String      @db.VarChar(200)
+  description    String      @db.Text
+  location       String      @db.VarChar(200)
+  type           JobType
+  status         JobStatus   @default(ACTIVE)
+  postedAt       DateTime    @default(now()) @map("posted_at") @db.Timestamptz(6)
+  closesAt       DateTime?   @map("closes_at") @db.Timestamptz(6)
+  externalUrl    String?     @map("external_url") @db.VarChar(2048)
+  createdAt      DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime    @updatedAt @map("updated_at") @db.Timestamptz(6)
+  employer       Employer    @relation(fields: [employerId], references: [id], onDelete: Restrict)
+  skills         JobSkill[]
+  savedBy        SavedJob[]
+
+  @@index([status, postedAt])
+  @@index([employerId])
+  @@map("job_opportunities")
+}
+
+model JobSkill {
+  jobId      String          @map("job_id") @db.Uuid
+  skillId    String          @map("skill_id") @db.Uuid
+  isRequired Boolean         @default(true) @map("is_required")
+  importance Decimal         @default(1.00) @db.Decimal(5, 2)
+  job        JobOpportunity  @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  skill      Skill           @relation(fields: [skillId], references: [id], onDelete: Cascade)
+
+  @@id([jobId, skillId])
+  @@index([skillId])
+  @@map("job_skills")
+}
+
+model SavedJob {
+  userId  String         @map("user_id") @db.Uuid
+  jobId   String         @map("job_id") @db.Uuid
+  savedAt DateTime       @default(now()) @map("saved_at") @db.Timestamptz(6)
+  user    User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  job     JobOpportunity @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@id([userId, jobId])
+  @@index([jobId])
+  @@map("saved_jobs")
+}

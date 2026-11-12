@@ -1,8 +1,11 @@
+#Dependencies
 node_modules/
 dist/
 build/
 .cache/
-.env*
+# Environment variables
+.env
+.env.*
 !.env.example
 .vite/
 vite.config.*.timestamp-*
@@ -21,3 +24,12 @@ logs/
 /.plugins/
 /.opencode-skills/
 .neon
+
+#Private Keys
+*.pem
+*.key
+
+#Local database files
+*.db
+*.sqlite
+*.sqlite3

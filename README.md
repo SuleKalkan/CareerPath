@@ -20,6 +20,25 @@ npm run dev
 
 Open the local URL printed in the terminal (the configured default is `http://localhost:8443`; set `PORT` to use a different port).
 
+## Local PostgreSQL database
+
+The Prisma schema and initial migration define the PostgreSQL data model. To create a local development/demo database, install PostgreSQL (including `psql` and `createdb`), create a database, and apply the migration and synthetic seed data from the repository root in PowerShell:
+
+```powershell
+createdb careerpath_dev
+$env:DATABASE_URL = "postgresql://postgres:<password>@localhost:5432/careerpath_dev"
+psql $env:DATABASE_URL -v ON_ERROR_STOP=1 -f prisma\migrations\20261110154000_initial_schema\migration.sql
+psql $env:DATABASE_URL -v ON_ERROR_STOP=1 -f prisma\seed.sql
+```
+
+Replace `<password>` with the password configured for your local PostgreSQL role. The migration is intended to run once on a new database; the seed can be run repeatedly. The seed contains fictional students, careers, courses, employers, and job listings. It covers job matching, saved jobs, roadmap progress, completed courses, transcript review (recognized and unrecognized rows), and a failed import. The demo accounts use `@example.test` addresses and have no passwords because this schema does not implement authentication.
+
+The seeded Cybersecurity Analyst Intern listing has five required skills. Maya starts with Python in her profile and Networking as a not-started roadmap activity, so her match is 20%. Completing that activity gives her Networking and raises the match to 40%. These database records are for development and demonstration only; the current Vite UI still uses its own in-memory sample data and is not connected to a database/API.
+
+## Neon connection
+
+The app is linked to the Neon project [`green-flower-30510503`](https://console.neon.tech/app/projects/green-flower-30510503/). Its `production` branch now has the initial Prisma migration applied and the synthetic demo seed loaded. Neon CLI stores its connection settings in the ignored `.env.local` file: `DATABASE_URL` is the pooled connection, and `DATABASE_URL_UNPOOLED` is the direct connection for Prisma migrations. Keep these values private; do not commit them or expose them through a `VITE_` variable. Use the unpooled connection when applying future migrations. The current app is a browser-only Vite frontend with no API/server, so it must not connect directly to PostgreSQL from client code; the database is provisioned but not yet wired to the UI.
+
 ## Implemented feature: interactive career roadmap
 
 The roadmap lets students add and remove activities, track them from **Not started** through **In progress** to **Completed**, and view progress toward their goal. Skill coverage distinguishes skills already in a profile, completed through the roadmap, planned in an activity, or still needing an activity. Job match percentages update when profile skills or completed roadmap skills change. Missing skills on a job can also be added to the roadmap.

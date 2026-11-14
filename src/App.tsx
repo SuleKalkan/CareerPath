@@ -1,4 +1,17 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import {
+  addProfileSkill as addProfileSkillRequest,
+  createRoadmapActivity,
+  deleteRoadmapActivity,
+  loadAppData,
+  removeProfileSkill as removeProfileSkillRequest,
+  saveJob,
+  unsaveJob,
+  updateRoadmapActivity,
+  type AppData,
+  type Job,
+  type RoadmapItem,
+} from "./api";
 
 type View = "home" | "jobs" | "saved" | "roadmap" | "profile";
 type IconName =
@@ -23,95 +36,14 @@ type IconName =
   | "upload"
   | "user";
 
-type Job = {
-  id: number;
-  title: string;
-  company: string;
-  location: string;
-  type: string;
-  posted: string;
-  logo: string;
-  logoClass: string;
-  requiredSkills: string[];
-  description: string;
-};
-
-type MatchedJob = Job & {
-  match: number;
-  skills: string[];
-  missing: string[];
-};
-
-type RoadmapItem = {
-  id: number;
-  title: string;
-  category: string;
-  duration: string;
-  status: "Completed" | "In progress" | "Not started";
-  description: string;
-  skill?: string;
-};
+type MatchedJob = Job;
 
 type NewRoadmapItem = Omit<RoadmapItem, "id" | "status">;
 type SkillCoverageStatus = "In profile" | "Completed" | "Planned" | "Needs activity";
 
-const initialProfileSkills = ["Python", "React", "Git", "Java", "Data structures"];
-const cybersecurityRequiredSkills = ["Networking", "Linux", "Python", "SIEM", "Risk analysis"];
-
-const jobs: Job[] = [
-  {
-    id: 1,
-    title: "Software Engineering Intern",
-    company: "Lowe’s",
-    location: "Charlotte, NC",
-    type: "Internship",
-    posted: "2 days ago",
-    logo: "L",
-    logoClass: "logo-blue",
-    requiredSkills: ["Python", "Git", "Data structures", "SQL", "AWS Cloud"],
-    description:
-      "Join a product engineering team building reliable tools used by millions of customers. You’ll collaborate with mentors and ship production-ready features.",
-  },
-  {
-    id: 2,
-    title: "Cybersecurity Analyst Intern",
-    company: "Bank of America",
-    location: "Charlotte, NC",
-    type: "Internship",
-    posted: "4 days ago",
-    logo: "B",
-    logoClass: "logo-red",
-    requiredSkills: cybersecurityRequiredSkills,
-    description:
-      "Support security monitoring and risk assessment initiatives while learning from a multidisciplinary cybersecurity team.",
-  },
-  {
-    id: 3,
-    title: "Data Analytics Co-op",
-    company: "Duke Energy",
-    location: "Hybrid",
-    type: "Co-op",
-    posted: "1 week ago",
-    logo: "D",
-    logoClass: "logo-teal",
-    requiredSkills: ["Python", "Excel", "Statistics", "Tableau", "SQL"],
-    description:
-      "Transform operational datasets into clear insights and dashboards that help teams make informed decisions.",
-  },
-  {
-    id: 4,
-    title: "Cloud Support Associate",
-    company: "Red Ventures",
-    location: "Fort Mill, SC",
-    type: "Entry level",
-    posted: "1 week ago",
-    logo: "R",
-    logoClass: "logo-orange",
-    requiredSkills: ["Linux", "Communication", "Git", "AWS Cloud", "Docker"],
-    description:
-      "Help maintain cloud systems and partner with engineering teams to diagnose and resolve technical issues.",
-  },
-];
+function getInitials(name: string): string {
+  return name.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]).join("").toUpperCase();
+}
 
 function getAcquiredSkills(profileSkills: string[], roadmap: RoadmapItem[]): Set<string> {
   const completedRoadmapSkills = roadmap
@@ -122,20 +54,6 @@ function getAcquiredSkills(profileSkills: string[], roadmap: RoadmapItem[]): Set
     ...profileSkills.map((skill) => skill.trim().toLowerCase()),
     ...completedRoadmapSkills,
   ]);
-}
-
-function getMatchedJob(job: Job, acquiredSkills: Set<string>): MatchedJob {
-  const skills = job.requiredSkills.filter((skill) => acquiredSkills.has(skill.toLowerCase()));
-  const missing = job.requiredSkills.filter((skill) => !acquiredSkills.has(skill.toLowerCase()));
-
-  return {
-    ...job,
-    skills,
-    missing,
-    match: job.requiredSkills.length
-      ? Math.round((skills.length / job.requiredSkills.length) * 100)
-      : 0,
-  };
 }
 
 function getSkillCoverage(
@@ -165,41 +83,6 @@ function getSkillCoverage(
     };
   });
 }
-
-const initialRoadmap: RoadmapItem[] = [
-  {
-    id: 1,
-    title: "Complete Data Structures",
-    category: "Course",
-    duration: "Spring 2026",
-    status: "Completed",
-    description: "Build a strong foundation in algorithms and computational thinking.",
-  },
-  {
-    id: 2,
-    title: "Build a portfolio project",
-    category: "Project",
-    duration: "4 weeks",
-    status: "In progress",
-    description: "Create and document a full-stack application that solves a real problem.",
-  },
-  {
-    id: 3,
-    title: "Practice technical interviews",
-    category: "Career prep",
-    duration: "2 weeks",
-    status: "Not started",
-    description: "Complete two mock interviews and review common data structure questions.",
-  },
-  {
-    id: 4,
-    title: "Attend the CCI career fair",
-    category: "Networking",
-    duration: "Mar 27",
-    status: "Not started",
-    description: "Meet university partners and learn about open internship opportunities.",
-  },
-];
 
 function Icon({ name, size = 20 }: { name: IconName; size?: number }) {
   const paths: Record<IconName, React.ReactNode> = {
@@ -286,11 +169,15 @@ function Sidebar({
   setView,
   open,
   close,
+  displayName,
+  savedCount,
 }: {
   view: View;
   setView: (view: View) => void;
   open: boolean;
   close: () => void;
+  displayName: string;
+  savedCount: number;
 }) {
   const navigation: { id: View; label: string; icon: IconName }[] = [
     { id: "home", label: "Overview", icon: "home" },
@@ -317,7 +204,7 @@ function Sidebar({
             >
               <Icon name={item.icon} />
               <span>{item.label}</span>
-              {item.id === "saved" && <span className="nav-count">2</span>}
+              {item.id === "saved" && <span className="nav-count">{savedCount}</span>}
             </button>
           ))}
         </nav>
@@ -328,8 +215,8 @@ function Sidebar({
           <button>View resources <Icon name="chevron" size={15} /></button>
         </div>
         <button className="account-card" onClick={() => setView("profile")}>
-          <span className="avatar">JD</span>
-          <span><strong>Jordan Davis</strong><small>Computer Science</small></span>
+          <span className="avatar">{getInitials(displayName)}</span>
+          <span><strong>{displayName}</strong><small>CareerPath student</small></span>
           <Icon name="chevron" size={16} />
         </button>
       </aside>
@@ -337,7 +224,7 @@ function Sidebar({
   );
 }
 
-function Header({ title, openMenu }: { title: string; openMenu: () => void }) {
+function Header({ title, openMenu, displayName }: { title: string; openMenu: () => void; displayName: string }) {
   return (
     <header className="topbar">
       <button className="icon-button menu-button" onClick={openMenu} aria-label="Open navigation"><Icon name="menu" /></button>
@@ -347,7 +234,7 @@ function Header({ title, openMenu }: { title: string; openMenu: () => void }) {
       </div>
       <div className="top-actions">
         <button className="icon-button notification" aria-label="Notifications"><span /></button>
-        <span className="avatar small">JD</span>
+        <span className="avatar small">{getInitials(displayName)}</span>
       </div>
     </header>
   );
@@ -356,9 +243,13 @@ function Header({ title, openMenu }: { title: string; openMenu: () => void }) {
 function Dashboard({
   setView,
   jobs,
+  savedCount,
+  careerTitle,
 }: {
   setView: (view: View) => void;
   jobs: MatchedJob[];
+  savedCount: number;
+  careerTitle: string;
 }) {
   return (
     <div className="page dashboard-page">
@@ -366,7 +257,7 @@ function Dashboard({
         <div>
           <span className="status-pill light"><Icon name="spark" size={15} /> Your weekly focus</span>
           <h2>Build the skills that get you hired.</h2>
-          <p>You’re closer than you think. Complete two roadmap activities this week to reach an 85% match for software engineering roles.</p>
+          <p>You’re closer than you think. Complete two roadmap activities this week to improve your match for {careerTitle.toLowerCase()} roles.</p>
           <div className="welcome-actions">
             <AppButton onClick={() => setView("roadmap")}>Continue roadmap <Icon name="chevron" size={17} /></AppButton>
             <AppButton variant="ghost" onClick={() => setView("jobs")}>Explore roles</AppButton>
@@ -394,7 +285,7 @@ function Dashboard({
         </article>
         <article className="stat-card">
           <span className="stat-icon amber"><Icon name="bookmark" /></span>
-          <div><p>Saved opportunities</p><strong>2 jobs</strong><small>1 closes this week</small></div>
+          <div><p>Saved opportunities</p><strong>{savedCount} jobs</strong><small>Saved to your shortlist</small></div>
         </article>
       </section>
 
@@ -419,7 +310,7 @@ function Dashboard({
         </section>
 
         <section className="panel readiness">
-          <div className="section-heading"><div><span className="eyebrow">Career readiness</span><h3>Software Engineer</h3></div><button className="icon-button"><Icon name="chevron" /></button></div>
+          <div className="section-heading"><div><span className="eyebrow">Career readiness</span><h3>{careerTitle}</h3></div><button className="icon-button"><Icon name="chevron" /></button></div>
           <div className="readiness-main">
             <ProgressRing value={84} />
             <div className="skill-bars">
@@ -428,7 +319,7 @@ function Dashboard({
               <div><span><b>Career prep</b><em>91%</em></span><i><b style={{ width: "91%" }} /></i></div>
             </div>
           </div>
-          <button className="insight-row" onClick={() => setView("jobs")}><span><Icon name="spark" /></span><div><strong>Top opportunity</strong><small>4 new roles match your profile</small></div><Icon name="chevron" /></button>
+          <button className="insight-row" onClick={() => setView("jobs")}><span><Icon name="spark" /></span><div><strong>Top opportunity</strong><small>{jobs.length} active roles to explore</small></div><Icon name="chevron" /></button>
         </section>
       </div>
 
@@ -458,9 +349,9 @@ function JobsView({
   onAddSkill,
 }: {
   jobs: MatchedJob[];
-  saved: number[];
-  onToggleSave: (id: number) => void;
-  onAddSkill: (skill: string) => void;
+  saved: string[];
+  onToggleSave: (id: string) => void;
+  onAddSkill: (skill: string) => Promise<void>;
 }) {
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState<MatchedJob | null>(null);
@@ -469,7 +360,7 @@ function JobsView({
   const filtered = useMemo(() => jobs.filter((job) =>
     `${job.title} ${job.company} ${job.requiredSkills.join(" ")}`.toLowerCase().includes(query.toLowerCase()) &&
     (activeType === "All roles" || job.type === activeType)
-  ), [query, activeType]);
+  ), [jobs, query, activeType]);
 
   if (selected) {
     return (
@@ -499,7 +390,7 @@ function JobsView({
               <p className="section-intro">Your profile matches {selected.skills.length} of {selected.requiredSkills.length} core skills. Add missing skills to your roadmap to become more competitive.</p>
               <div className="skills-columns">
                 <div><h4><span className="dot green" /> Skills you have</h4>{selected.skills.map((skill) => <span className="skill-row" key={skill}><Icon name="check" size={16} /> {skill}<small>From profile</small></span>)}</div>
-                <div><h4><span className="dot amber" /> Skills to develop</h4>{selected.missing.map((skill) => <span className="skill-row missing" key={skill}><Icon name="target" size={16} /> {skill}<button onClick={() => onAddSkill(skill)}><Icon name="plus" size={15} /> Add</button></span>)}</div>
+                <div><h4><span className="dot amber" /> Skills to develop</h4>{selected.missing.map((skill) => <span className="skill-row missing" key={skill}><Icon name="target" size={16} /> {skill}<button onClick={() => void onAddSkill(skill)}><Icon name="plus" size={15} /> Add</button></span>)}</div>
               </div>
             </section>
             <section className="panel about-role">
@@ -562,7 +453,8 @@ function JobsView({
 function RoadmapView({
   roadmap,
   profileSkills,
-  cybersecuritySkills,
+  careerSkills,
+  careerTitle,
   addActivity,
   onAddSkill,
   removeActivity,
@@ -572,11 +464,12 @@ function RoadmapView({
 }: {
   roadmap: RoadmapItem[];
   profileSkills: string[];
-  cybersecuritySkills: string[];
-  addActivity: (activity: NewRoadmapItem) => void;
-  onAddSkill: (skill: string) => void;
-  removeActivity: (id: number) => void;
-  updateStatus: (id: number) => void;
+  careerSkills: string[];
+  careerTitle: string;
+  addActivity: (activity: NewRoadmapItem) => Promise<void>;
+  onAddSkill: (skill: string) => Promise<void>;
+  removeActivity: (id: string) => Promise<void>;
+  updateStatus: (id: string, status: RoadmapItem["status"]) => Promise<void>;
   courseFile: string;
   importCourses: (fileName: string) => void;
 }) {
@@ -585,25 +478,26 @@ function RoadmapView({
   const [activityCategory, setActivityCategory] = useState("Skill");
   const complete = roadmap.filter((item) => item.status === "Completed").length;
   const percent = roadmap.length ? Math.round((complete / roadmap.length) * 100) : 0;
-  const skillCoverage = getSkillCoverage(cybersecuritySkills, profileSkills, roadmap);
-  const handleAddActivity = (event: React.FormEvent<HTMLFormElement>) => {
+  const skillCoverage = getSkillCoverage(careerSkills, profileSkills, roadmap);
+  const handleAddActivity = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    const formData = new FormData(event.currentTarget);
-    addActivity({
+    const form = event.currentTarget;
+    const formData = new FormData(form);
+    await addActivity({
       title: String(formData.get("title")).trim(),
       category: String(formData.get("category")),
       duration: String(formData.get("duration")).trim() || "Flexible",
       description: String(formData.get("description")).trim() || "Added to your career roadmap.",
       ...(formData.get("skill") ? { skill: String(formData.get("skill")) } : {}),
     });
-    event.currentTarget.reset();
+    form.reset();
     setAddingActivity(false);
     setActivityCategory("Skill");
   };
   return (
     <div className="page roadmap-page">
       <section className="roadmap-header">
-        <div><span className="eyebrow green-text">Personalized for your goal</span><h2>Software Engineer roadmap</h2><p>A flexible plan based on your profile, coursework, and roles you want.</p></div>
+        <div><span className="eyebrow green-text">Personalized for your goal</span><h2>{careerTitle} roadmap</h2><p>A flexible plan based on your profile, coursework, and roles you want.</p></div>
         <div className="roadmap-score"><ProgressRing value={percent} size="small" /><span><strong>{complete} of {roadmap.length}</strong><small>activities complete</small></span></div>
       </section>
       <div className="roadmap-layout">
@@ -639,10 +533,10 @@ function RoadmapView({
               </div>
               {activityCategory === "Skill" && (
                 <label>
-                  Related cybersecurity skill
+                  Related career skill
                   <select name="skill" defaultValue="">
                     <option value="">Select a skill (optional)</option>
-                    {cybersecuritySkills.map((skill) => <option value={skill} key={skill}>{skill}</option>)}
+                    {careerSkills.map((skill) => <option value={skill} key={skill}>{skill}</option>)}
                   </select>
                 </label>
               )}
@@ -691,7 +585,7 @@ function RoadmapView({
         </section>
         <aside>
           <section className="panel skill-coverage">
-            <span className="eyebrow green-text">Cybersecurity Analyst</span>
+            <span className="eyebrow green-text">{careerTitle}</span>
             <h3>Skill coverage</h3>
             <p>Profile skills and completed skill activities count as learned. Incomplete activities stay planned.</p>
             <div className="coverage-list">
@@ -699,7 +593,7 @@ function RoadmapView({
                 <div className="coverage-row" key={skill}>
                   <span>{skill}</span>
                   {status === "Needs activity" ? (
-                    <button className="coverage-add" onClick={() => onAddSkill(skill)}><Icon name="plus" size={14} /> Add</button>
+                    <button className="coverage-add" onClick={() => void onAddSkill(skill)}><Icon name="plus" size={14} /> Add</button>
                   ) : (
                     <small className={`coverage-status ${status === "In profile" || status === "Completed" ? "acquired" : "planned"}`}>{status}</small>
                   )}
@@ -726,7 +620,7 @@ function RoadmapView({
               <span><Icon name={courseFile ? "check" : "upload"} /></span>
               <div>
                 <strong>{courseFile || "Upload course history"}</strong>
-                <small>{courseFile ? "Imported · Roadmap updated" : "PDF, DOCX or CSV · Helpful for transfer students"}</small>
+                <small>{courseFile ? "Selected locally · Not saved" : "PDF, DOCX or CSV · Helpful for transfer students"}</small>
               </div>
               <b>{courseFile ? "Replace" : "Choose file"}</b>
             </label>
@@ -759,8 +653,11 @@ function RoadmapView({
             <div className="modal-footer">
               <span>Current status: <strong>{selected.status}</strong></span>
               <div className="activity-actions">
-                <AppButton variant="secondary" onClick={() => { removeActivity(selected.id); setSelected(null); }}>Remove activity</AppButton>
-                <AppButton onClick={() => { updateStatus(selected.id); setSelected(null); }}>
+                <AppButton variant="secondary" onClick={() => { void removeActivity(selected.id).then(() => setSelected(null)); }}>Remove activity</AppButton>
+                <AppButton onClick={() => {
+                  const status = selected.status === "Not started" ? "In progress" : "Completed";
+                  void updateStatus(selected.id, status).then(() => setSelected(null));
+                }}>
                   {selected.status === "Not started" ? "Mark in progress" : selected.status === "In progress" ? "Mark complete" : "Completed"}
                 </AppButton>
               </div>
@@ -772,7 +669,7 @@ function RoadmapView({
   );
 }
 
-function SavedView({ jobs, saved, onToggleSave, openJobs }: { jobs: MatchedJob[]; saved: number[]; onToggleSave: (id: number) => void; openJobs: () => void }) {
+function SavedView({ jobs, saved, onToggleSave, openJobs }: { jobs: MatchedJob[]; saved: string[]; onToggleSave: (id: string) => void; openJobs: () => void }) {
   const savedJobs = jobs.filter((job) => saved.includes(job.id));
   return (
     <div className="page saved-page">
@@ -796,18 +693,21 @@ function SavedView({ jobs, saved, onToggleSave, openJobs }: { jobs: MatchedJob[]
 
 function ProfileView({
   skills,
+  displayName,
+  careerTitle,
   onAddSkill,
   onRemoveSkill,
 }: {
   skills: string[];
-  onAddSkill: (skill: string) => void;
+  displayName: string;
+  careerTitle: string;
+  onAddSkill: (skill: string) => Promise<void>;
   onRemoveSkill: (skill: string) => void;
 }) {
-  const [uploaded, setUploaded] = useState(false);
   const [adding, setAdding] = useState(false);
   const [newSkill, setNewSkill] = useState("");
-  const addSkill = () => {
-    onAddSkill(newSkill);
+  const addSkill = async () => {
+    await onAddSkill(newSkill);
     setNewSkill("");
     setAdding(false);
   };
@@ -816,8 +716,8 @@ function ProfileView({
       <section className="page-title"><span className="eyebrow green-text">Your career identity</span><h2>Profile & experience</h2><p>Keep this current to get more accurate role matches and roadmap recommendations.</p></section>
       <div className="profile-layout">
         <aside className="panel profile-summary">
-          <div className="profile-avatar">JD<span><Icon name="check" size={14} /></span></div>
-          <h3>Jordan Davis</h3><p>Computer Science · Junior</p><span className="partner-badge">UNC Charlotte</span>
+          <div className="profile-avatar">{getInitials(displayName)}<span><Icon name="check" size={14} /></span></div>
+          <h3>{displayName}</h3><p>CareerPath student</p><span className="partner-badge">UNC Charlotte</span>
           <hr />
           <div className="profile-completion"><span><strong>84%</strong><small>Profile strength</small></span><i><b /></i></div>
           <p className="profile-hint"><Icon name="spark" size={17} /> Add a resume to improve your job matches.</p>
@@ -825,7 +725,7 @@ function ProfileView({
         <div className="profile-content">
           <section className="panel profile-section">
             <div className="section-heading"><div><span className="eyebrow">About you</span><h3>Academic details</h3></div><button className="text-button">Edit</button></div>
-            <div className="details-grid"><div><small>University</small><strong>UNC Charlotte</strong></div><div><small>College</small><strong>College of Computing & Informatics</strong></div><div><small>Concentration</small><strong>Software Engineering</strong></div><div><small>Expected graduation</small><strong>May 2027</strong></div></div>
+            <div className="details-grid"><div><small>University</small><strong>UNC Charlotte</strong></div><div><small>College</small><strong>College of Computing & Informatics</strong></div><div><small>Career goal</small><strong>{careerTitle}</strong></div><div><small>Expected graduation</small><strong>May 2027</strong></div></div>
           </section>
           <section className="panel profile-section">
             <div className="section-heading"><div><span className="eyebrow">What you know</span><h3>Skills</h3></div><button className="text-button" onClick={() => setAdding(true)}><Icon name="plus" size={16} /> Add skill</button></div>
@@ -834,10 +734,10 @@ function ProfileView({
           </section>
           <section className="panel profile-section">
             <div className="section-heading"><div><span className="eyebrow">Documents</span><h3>Resume & coursework</h3></div></div>
-            <button className={`upload-zone ${uploaded ? "uploaded" : ""}`} onClick={() => setUploaded(true)}>
-              <span><Icon name={uploaded ? "check" : "upload"} /></span>
-              <div><strong>{uploaded ? "Jordan_Davis_Resume.pdf" : "Upload your resume or transcript"}</strong><small>{uploaded ? "Added just now · Ready to analyze" : "PDF or DOCX · CareerPath uses this to identify your skills"}</small></div>
-              <b>{uploaded ? "Replace" : "Choose file"}</b>
+            <button className="upload-zone" disabled>
+              <span><Icon name="upload" /></span>
+              <div><strong>Upload your resume or transcript</strong><small>File upload and analysis are not connected yet.</small></div>
+              <b>Coming soon</b>
             </button>
           </section>
         </div>
@@ -849,98 +749,129 @@ function ProfileView({
 export default function App() {
   const [view, setView] = useState<View>("home");
   const [menuOpen, setMenuOpen] = useState(false);
-  const [saved, setSaved] = useState<number[]>([1, 2]);
-  const [profileSkills, setProfileSkills] = useState(initialProfileSkills);
-  const [roadmap, setRoadmap] = useState<RoadmapItem[]>(initialRoadmap);
+  const [data, setData] = useState<AppData | null>(null);
+  const [loadError, setLoadError] = useState("");
+  const [loading, setLoading] = useState(true);
   const [courseFile, setCourseFile] = useState("");
   const [toast, setToast] = useState("");
-  const acquiredSkills = useMemo(
-    () => getAcquiredSkills(profileSkills, roadmap),
-    [profileSkills, roadmap],
-  );
-  const matchedJobs = useMemo(
-    () => jobs.map((job) => getMatchedJob(job, acquiredSkills)),
-    [acquiredSkills],
-  );
+  const [toastIsError, setToastIsError] = useState(false);
 
-  const showToast = (message: string) => {
+  useEffect(() => {
+    let active = true;
+    loadAppData().then((result) => {
+      if (active) {
+        setData(result);
+        setLoadError("");
+      }
+    }).catch((error: unknown) => {
+      if (active) setLoadError(error instanceof Error ? error.message : "Could not load CareerPath data.");
+    }).finally(() => {
+      if (active) setLoading(false);
+    });
+    return () => { active = false; };
+  }, []);
+
+  const showToast = (message: string, isError = false) => {
     setToast(message);
+    setToastIsError(isError);
     window.setTimeout(() => setToast(""), 2600);
   };
-  const toggleSave = (id: number) => {
-    setSaved((current) => current.includes(id) ? current.filter((item) => item !== id) : [...current, id]);
-    showToast(saved.includes(id) ? "Removed from saved jobs" : "Job saved to your shortlist");
+  const runMutation = async (action: () => Promise<unknown>, successMessage: string) => {
+    try {
+      await action();
+      const updated = await loadAppData();
+      setData(updated);
+      showToast(successMessage);
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : "The request could not be completed.", true);
+    }
+  };
+  const toggleSave = (id: string) => {
+    if (!data) return Promise.resolve();
+    const isSaved = data.savedJobIds.includes(id);
+    return runMutation(
+      () => isSaved ? unsaveJob(id) : saveJob(id),
+      isSaved ? "Removed from saved jobs" : "Job saved to your shortlist",
+    );
   };
   const addProfileSkill = (skill: string) => {
     const trimmedSkill = skill.trim();
-    if (!trimmedSkill) return;
-    if (profileSkills.some((item) => item.toLowerCase() === trimmedSkill.toLowerCase())) {
-      showToast("That skill is already in your profile");
-      return;
+    if (!trimmedSkill || !data) return Promise.resolve();
+    if (data.profileSkills.some((item) => item.toLowerCase() === trimmedSkill.toLowerCase())) {
+      showToast("That skill is already in your profile", true);
+      return Promise.resolve();
     }
-    setProfileSkills((current) => [...current, trimmedSkill]);
-    showToast(`${trimmedSkill} added to your profile`);
+    return runMutation(() => addProfileSkillRequest(trimmedSkill), `${trimmedSkill} added to your profile`);
   };
   const removeProfileSkill = (skill: string) => {
-    setProfileSkills((current) => current.filter((item) => item !== skill));
+    return runMutation(() => removeProfileSkillRequest(skill), `${skill} removed from your profile`);
   };
   const addSkill = (skill: string) => {
     const trimmedSkill = skill.trim();
-    if (!trimmedSkill) return;
+    if (!trimmedSkill || !data) return Promise.resolve();
     const title = `Develop ${trimmedSkill}`;
-    if (roadmap.some((item) =>
+    if (data.roadmap.some((item) =>
       item.category === "Skill" &&
       (item.skill?.trim().toLowerCase() === trimmedSkill.toLowerCase() ||
         item.title.trim().toLowerCase() === title.toLowerCase()),
     )) {
       showToast(`${trimmedSkill} is already on your roadmap`);
-      return;
+      return Promise.resolve();
     }
-    setRoadmap((current) => [...current, { id: Date.now(), title, category: "Skill", duration: "3 weeks", status: "Not started", description: `Build practical ${trimmedSkill} experience through a guided project selected for your career goal.`, skill: trimmedSkill }]);
-    showToast(`${trimmedSkill} added to your roadmap`);
+    return runMutation(() => createRoadmapActivity({
+      title,
+      category: "Skill",
+      duration: "3 weeks",
+      description: `Build practical ${trimmedSkill} experience through a guided project selected for your career goal.`,
+      skill: trimmedSkill,
+    }), `${trimmedSkill} added to your roadmap`);
   };
   const addRoadmapActivity = (activity: NewRoadmapItem) => {
-    setRoadmap((current) => [...current, { ...activity, id: Date.now(), status: "Not started" }]);
-    showToast("Activity added to your roadmap");
+    return runMutation(() => createRoadmapActivity(activity), "Activity added to your roadmap");
   };
-  const removeRoadmapActivity = (id: number) => {
-    setRoadmap((current) => current.filter((item) => item.id !== id));
-    showToast("Activity removed from your roadmap");
+  const removeRoadmapActivity = (id: string) => {
+    return runMutation(() => deleteRoadmapActivity(id), "Activity removed from your roadmap");
   };
-  const updateStatus = (id: number) => {
-    setRoadmap((current) => current.map((item) => item.id === id ? { ...item, status: item.status === "Not started" ? "In progress" : item.status === "In progress" ? "Completed" : "Completed" } : item));
-    showToast("Roadmap progress updated");
+  const updateStatus = (id: string, status: RoadmapItem["status"]) => {
+    return runMutation(() => updateRoadmapActivity(id, status), "Roadmap progress updated");
   };
   const importCourses = (fileName: string) => {
     setCourseFile(fileName);
-    setRoadmap((current) => {
-      const refreshed = current.map((item) => item.category === "Course" ? { ...item, status: "Completed" as const } : item);
-      if (refreshed.some((item) => item.category === "Transfer credit")) return refreshed;
-      return [{
-        id: Date.now(),
-        title: "Prior coursework imported",
-        category: "Transfer credit",
-        duration: "Course history",
-        status: "Completed",
-        description: "Your completed and transferred courses have been included in this roadmap.",
-      }, ...refreshed];
-    });
-    showToast("Course history imported — roadmap updated");
+    showToast("Transcript upload is a demo placeholder and is not saved.");
   };
 
   const titles: Record<View, string> = { home: "Overview", jobs: "Explore jobs", saved: "Saved jobs", roadmap: "My roadmap", profile: "My profile" };
+  if (loading) {
+    return <main className="app-shell"><section className="page"><p>Connecting to CareerPath…</p></section></main>;
+  }
+  if (!data) {
+    return (
+      <main className="app-shell">
+        <section className="page panel">
+          <h1>CareerPath API unavailable</h1>
+          <p>{loadError || "The API did not return application data."}</p>
+          <p>Start the Node API with <code>npm run dev:api</code>, then reload this page.</p>
+          <AppButton onClick={() => window.location.reload()}>Retry</AppButton>
+        </section>
+      </main>
+    );
+  }
+  const { profileSkills, roadmap, savedJobIds: saved } = data;
+  const matchedJobs = data.jobs;
+  const displayName = data.user.displayName;
+  const careerTitle = data.user.career || "Career exploration";
   return (
     <div className="app-shell">
-      <Sidebar view={view} setView={setView} open={menuOpen} close={() => setMenuOpen(false)} />
+      <Sidebar view={view} setView={setView} open={menuOpen} close={() => setMenuOpen(false)} displayName={displayName} savedCount={saved.length} />
       <main className="main-shell">
-        <Header title={titles[view]} openMenu={() => setMenuOpen(true)} />
-        {view === "home" && <Dashboard setView={setView} jobs={matchedJobs} />}
+        <Header title={titles[view]} openMenu={() => setMenuOpen(true)} displayName={displayName} />
+        {view === "home" && <Dashboard setView={setView} jobs={matchedJobs} savedCount={saved.length} careerTitle={careerTitle} />}
         {view === "jobs" && <JobsView jobs={matchedJobs} saved={saved} onToggleSave={toggleSave} onAddSkill={addSkill} />}
         {view === "saved" && <SavedView jobs={matchedJobs} saved={saved} onToggleSave={toggleSave} openJobs={() => setView("jobs")} />}
-        {view === "roadmap" && <RoadmapView roadmap={roadmap} profileSkills={profileSkills} cybersecuritySkills={cybersecurityRequiredSkills} addActivity={addRoadmapActivity} onAddSkill={addSkill} removeActivity={removeRoadmapActivity} updateStatus={updateStatus} courseFile={courseFile} importCourses={importCourses} />}
-        {view === "profile" && <ProfileView skills={profileSkills} onAddSkill={addProfileSkill} onRemoveSkill={removeProfileSkill} />}
+        {view === "roadmap" && <RoadmapView roadmap={roadmap} profileSkills={profileSkills} careerSkills={data.careerSkills} careerTitle={careerTitle} addActivity={addRoadmapActivity} onAddSkill={addSkill} removeActivity={removeRoadmapActivity} updateStatus={updateStatus} courseFile={courseFile} importCourses={importCourses} />}
+        {view === "profile" && <ProfileView skills={profileSkills} displayName={displayName} careerTitle={careerTitle} onAddSkill={addProfileSkill} onRemoveSkill={removeProfileSkill} />}
       </main>
-      {toast && <div className="toast"><span><Icon name="check" size={16} /></span>{toast}</div>}
+      {toast && <div className={`toast ${toastIsError ? "error" : ""}`}><span><Icon name={toastIsError ? "close" : "check"} size={16} /></span>{toast}</div>}
     </div>
   );
 }

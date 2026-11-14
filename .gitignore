@@ -1,7 +1,9 @@
+#Dependencies
 node_modules/
 dist/
 build/
 .cache/
+# Environment variables and secrets
 .env*
 !.env.example
 .vite/
@@ -20,3 +22,13 @@ logs/
 # beside it.
 /.plugins/
 /.opencode-skills/
+.neon
+
+#Private Keys
+*.pem
+*.key
+
+#Local database files
+*.db
+*.sqlite
+*.sqlite3

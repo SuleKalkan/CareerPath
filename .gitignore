@@ -3,9 +3,8 @@ node_modules/
 dist/
 build/
 .cache/
-# Environment variables
-.env
-.env.*
+# Environment variables and secrets
+.env*
 !.env.example
 .vite/
 vite.config.*.timestamp-*

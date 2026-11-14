@@ -1,3 +1,4 @@
+
 {
   "name": "figma-make-app",
   "private": true,
@@ -35,5 +36,9 @@
     "tailwindcss": "^4.0.0",
     "typescript": "^5.7.0",
     "vite": "^8.0.5"
+  },
+  "overrides": {
+    "deepmerge-ts": "^8.0.2"
   }
 }
+

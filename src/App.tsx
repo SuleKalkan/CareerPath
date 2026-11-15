@@ -4,14 +4,17 @@ import {
   createRoadmapActivity,
   deleteRoadmapActivity,
   loadAppData,
+  removeCourseFile as removeCourseFileRequest,
   removeProfileSkill as removeProfileSkillRequest,
   saveJob,
   unsaveJob,
+  uploadCourseFile,
   updateRoadmapActivity,
   type AppData,
   type Job,
   type RoadmapItem,
 } from "./api";
+import FileUpload, { type SelectedFile } from "./FileUpload";
 
 type View = "home" | "jobs" | "saved" | "roadmap" | "profile";
 type IconName =
@@ -461,6 +464,7 @@ function RoadmapView({
   updateStatus,
   courseFile,
   importCourses,
+  removeCourseFile,
 }: {
   roadmap: RoadmapItem[];
   profileSkills: string[];
@@ -470,8 +474,9 @@ function RoadmapView({
   onAddSkill: (skill: string) => Promise<void>;
   removeActivity: (id: string) => Promise<void>;
   updateStatus: (id: string, status: RoadmapItem["status"]) => Promise<void>;
-  courseFile: string;
-  importCourses: (fileName: string) => void;
+  courseFile: SelectedFile | null;
+  importCourses: (file: SelectedFile) => void;
+  removeCourseFile: () => void;
 }) {
   const [selected, setSelected] = useState<RoadmapItem | null>(null);
   const [addingActivity, setAddingActivity] = useState(false);
@@ -608,7 +613,8 @@ function RoadmapView({
               <h3>Import completed courses</h3>
               <p>Upload a transcript or course history so completed and transfer credits can shape your roadmap.</p>
             </div>
-            <label className={`upload-zone course-upload ${courseFile ? "uploaded" : ""}`}>
+            <FileUpload file={courseFile} onSelect={importCourses} onRemove={removeCourseFile} onError={(message) => window.alert(message)} label="Upload course history" />
+            {/*
               <input
                 type="file"
                 accept=".pdf,.doc,.docx,.csv"
@@ -623,7 +629,7 @@ function RoadmapView({
                 <small>{courseFile ? "Selected locally · Not saved" : "PDF, DOCX or CSV · Helpful for transfer students"}</small>
               </div>
               <b>{courseFile ? "Replace" : "Choose file"}</b>
-            </label>
+            </label>*/}
           </section>
           <section className="panel roadmap-aside">
             <span className="stat-icon green"><Icon name="spark" /></span>
@@ -697,12 +703,18 @@ function ProfileView({
   careerTitle,
   onAddSkill,
   onRemoveSkill,
+  courseFile,
+  onUploadFile,
+  onRemoveFile,
 }: {
   skills: string[];
   displayName: string;
   careerTitle: string;
   onAddSkill: (skill: string) => Promise<void>;
   onRemoveSkill: (skill: string) => void;
+  courseFile: SelectedFile | null;
+  onUploadFile: (file: SelectedFile) => void;
+  onRemoveFile: () => void;
 }) {
   const [adding, setAdding] = useState(false);
   const [newSkill, setNewSkill] = useState("");
@@ -734,11 +746,7 @@ function ProfileView({
           </section>
           <section className="panel profile-section">
             <div className="section-heading"><div><span className="eyebrow">Documents</span><h3>Resume & coursework</h3></div></div>
-            <button className="upload-zone" disabled>
-              <span><Icon name="upload" /></span>
-              <div><strong>Upload your resume or transcript</strong><small>File upload and analysis are not connected yet.</small></div>
-              <b>Coming soon</b>
-            </button>
+            <FileUpload file={courseFile} onSelect={onUploadFile} onRemove={onRemoveFile} onError={(message) => window.alert(message)} label="Upload your resume or transcript" />
           </section>
         </div>
       </div>
@@ -752,7 +760,6 @@ export default function App() {
   const [data, setData] = useState<AppData | null>(null);
   const [loadError, setLoadError] = useState("");
   const [loading, setLoading] = useState(true);
-  const [courseFile, setCourseFile] = useState("");
   const [toast, setToast] = useState("");
   const [toastIsError, setToastIsError] = useState(false);
 
@@ -835,9 +842,15 @@ export default function App() {
   const updateStatus = (id: string, status: RoadmapItem["status"]) => {
     return runMutation(() => updateRoadmapActivity(id, status), "Roadmap progress updated");
   };
-  const importCourses = (fileName: string) => {
-    setCourseFile(fileName);
-    showToast("Transcript upload is a demo placeholder and is not saved.");
+  const courseFile: SelectedFile | null = data?.courseImport
+    ? { name: data.courseImport.fileName, type: data.courseImport.mediaType, size: data.courseImport.size }
+    : null;
+  const importCourses = (file: SelectedFile) => {
+    void runMutation(() => uploadCourseFile(file), `${file.name} uploaded successfully`);
+  };
+  const removeCourseFile = () => {
+    if (!data?.courseImport) return;
+    void runMutation(() => removeCourseFileRequest(data.courseImport!.id), "Uploaded file removed");
   };
 
   const titles: Record<View, string> = { home: "Overview", jobs: "Explore jobs", saved: "Saved jobs", roadmap: "My roadmap", profile: "My profile" };
@@ -868,8 +881,8 @@ export default function App() {
         {view === "home" && <Dashboard setView={setView} jobs={matchedJobs} savedCount={saved.length} careerTitle={careerTitle} />}
         {view === "jobs" && <JobsView jobs={matchedJobs} saved={saved} onToggleSave={toggleSave} onAddSkill={addSkill} />}
         {view === "saved" && <SavedView jobs={matchedJobs} saved={saved} onToggleSave={toggleSave} openJobs={() => setView("jobs")} />}
-        {view === "roadmap" && <RoadmapView roadmap={roadmap} profileSkills={profileSkills} careerSkills={data.careerSkills} careerTitle={careerTitle} addActivity={addRoadmapActivity} onAddSkill={addSkill} removeActivity={removeRoadmapActivity} updateStatus={updateStatus} courseFile={courseFile} importCourses={importCourses} />}
-        {view === "profile" && <ProfileView skills={profileSkills} displayName={displayName} careerTitle={careerTitle} onAddSkill={addProfileSkill} onRemoveSkill={removeProfileSkill} />}
+        {view === "roadmap" && <RoadmapView roadmap={roadmap} profileSkills={profileSkills} careerSkills={data.careerSkills} careerTitle={careerTitle} addActivity={addRoadmapActivity} onAddSkill={addSkill} removeActivity={removeRoadmapActivity} updateStatus={updateStatus} courseFile={courseFile} importCourses={importCourses} removeCourseFile={removeCourseFile} />}
+        {view === "profile" && <ProfileView skills={profileSkills} displayName={displayName} careerTitle={careerTitle} onAddSkill={addProfileSkill} onRemoveSkill={removeProfileSkill} courseFile={courseFile} onUploadFile={importCourses} onRemoveFile={removeCourseFile} />}
       </main>
       {toast && <div className={`toast ${toastIsError ? "error" : ""}`}><span><Icon name={toastIsError ? "close" : "check"} size={16} /></span>{toast}</div>}
     </div>

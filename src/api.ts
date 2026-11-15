@@ -31,6 +31,7 @@ export type AppData = {
   careerSkills: string[];
   roadmap: RoadmapItem[];
   jobs: Job[];
+  courseImport: { id: string; fileName: string; mediaType: string; size: number; status: string } | null;
 };
 
 async function request<T>(path: string, method = "GET", body?: unknown): Promise<T> {
@@ -60,3 +61,6 @@ export const addProfileSkill = (name: string) =>
   request<{ name: string }>("/profile/skills", "POST", { name });
 export const removeProfileSkill = (name: string) =>
   request<void>(`/profile/skills/${encodeURIComponent(name.trim().toLowerCase())}`, "DELETE");
+export const uploadCourseFile = (file: { name: string; type: string; size: number }) =>
+  request<AppData["courseImport"]>("/profile/course-imports", "POST", { fileName: file.name, mediaType: file.type, size: file.size });
+export const removeCourseFile = (id: string) => request<void>(`/profile/course-imports/${encodeURIComponent(id)}`, "DELETE");

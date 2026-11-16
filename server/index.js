@@ -744,8 +744,7 @@ app.post("/api/profile/course-imports/:importId/confirm", async (request, respon
 
 app.delete("/api/profile/course-imports/:importId", async (request, response) => {
   const { user } = await getDemoContext();
-  const deleted = await prisma.courseImport.deleteMany({ where: { id: request.params.importId, userId: user.id } });
-  if (!deleted.count) throw httpError(404, "Uploaded file was not found.");
+  await removeCourseImport(prisma, user.id, request.params.importId);
   response.status(204).end();
 });
 

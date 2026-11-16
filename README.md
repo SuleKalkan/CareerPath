@@ -55,7 +55,7 @@ The seeded Cybersecurity Analyst Intern listing has five required skills. Maya s
 
 The app is linked to the Neon project [`green-flower-30510503`](https://console.neon.tech/app/projects/green-flower-30510503/). Its `production` branch has the initial Prisma migration applied and the synthetic demo seed loaded. `DATABASE_URL` is the pooled connection for API queries, and `DATABASE_URL_UNPOOLED` is the direct connection for Prisma migrations. Keep both values private; never commit them or expose them through a `VITE_` variable.
 
-The API currently serves the seeded Jordan Lee demo account (`DEMO_USER_ID` in `.env.local`). It persists job saves, profile skills, and roadmap activity changes. Transcript/resume uploads remain demo placeholders and are not uploaded or persisted. This API has no authentication and is loopback-only by default; it refuses to start with `NODE_ENV=production`. Do not expose it publicly or deploy it until authentication and authorization have been implemented.
+The API currently serves the seeded Jordan Lee demo account (`DEMO_USER_ID` in `.env.local`). It persists job saves, profile skills, roadmap activity changes, and the latest resume/transcript upload metadata. The upload feature validates PDF, DOC, DOCX, and CSV files up to 10 MB; file contents are not stored because no document-storage service is configured. This API has no authentication and is loopback-only by default; it refuses to start with `NODE_ENV=production`. Do not expose it publicly or deploy it until authentication and authorization have been implemented.
 
 ## Implemented feature: interactive career roadmap
 

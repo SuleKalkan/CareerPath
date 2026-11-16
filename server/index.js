@@ -1,6 +1,17 @@
+import { randomUUID } from "node:crypto";
+import { basename } from "node:path";
+import { Readable } from "node:stream";
 import dotenv from "dotenv";
 import express from "express";
 import { Prisma, PrismaClient } from "@prisma/client";
+import {
+  findCatalogMatch,
+  isCompletedGrade,
+  isDuplicateCourse,
+  makeDeduplicationKey,
+  parseCourseCsv,
+} from "./course-extraction.js";
+import { parseCoursePdf } from "./pdf-course-extraction.js";
 
 dotenv.config({ path: ".env.local" });
 dotenv.config();
@@ -36,13 +47,10 @@ const typeMap = {
   CONTRACT: "Contract",
   OTHER: "Other",
 };
-const supportedFileTypes = new Map([
-  [".pdf", "application/pdf"],
-  [".doc", "application/msword"],
-  [".docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"],
-  [".csv", "text/csv"],
-]);
 const maxFileSize = 10 * 1024 * 1024;
+const maxMultipartOverhead = 128 * 1024;
+const acceptedCsvMediaTypes = new Set(["", "text/csv", "text/plain", "application/vnd.ms-excel"]);
+const acceptedPdfMediaTypes = new Set(["", "application/pdf"]);
 
 if (process.env.NODE_ENV === "production") {
   throw new Error("This demo API has no authentication and must not run in production.");
@@ -55,7 +63,7 @@ if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
 }
 
 app.disable("x-powered-by");
-app.use(express.json({ limit: "16kb" }));
+app.use(express.json({ limit: "1mb" }));
 
 function httpError(status, message) {
   const error = new Error(message);
@@ -97,6 +105,150 @@ function mapActivity(activity) {
   };
 }
 
+function mapExtractedCourse(course) {
+  return {
+    id: course.id,
+    courseCode: course.courseCode,
+    courseTitle: course.courseTitle,
+    grade: course.grade,
+    creditHours: course.creditHours === null ? null : Number(course.creditHours),
+    institutionName: course.institutionName,
+    term: course.term,
+    reviewStatus: course.reviewStatus,
+    reviewNote: course.reviewNote,
+    recognizedCourse: course.recognizedCourse
+      ? {
+          id: course.recognizedCourse.id,
+          courseCode: course.recognizedCourse.courseCode,
+          title: course.recognizedCourse.title,
+          institutionName: course.recognizedCourse.institutionName,
+        }
+      : null,
+  };
+}
+
+function mapCourseImport(courseImport) {
+  const encodedSize = Number(courseImport.storageKey.split(":").pop());
+  return {
+    id: courseImport.id,
+    fileName: courseImport.fileName,
+    mediaType: courseImport.mediaType,
+    size: Number.isFinite(encodedSize) ? encodedSize : 0,
+    status: courseImport.status,
+    errorMessage: courseImport.errorMessage,
+    extractedCourses: courseImport.extractedCourses.map(mapExtractedCourse),
+  };
+}
+
+function validateConfirmedCourse(course) {
+  if (!course || typeof course !== "object" || typeof course.id !== "string") {
+    throw httpError(400, "Each selected course must include its extracted course ID.");
+  }
+  if (course.courseCode !== null && course.courseCode !== undefined && typeof course.courseCode !== "string") {
+    throw httpError(400, "Course code must be a string.");
+  }
+  if (course.courseTitle !== null && course.courseTitle !== undefined && typeof course.courseTitle !== "string") {
+    throw httpError(400, "Course name must be a string.");
+  }
+  if (course.grade !== null && course.grade !== undefined && typeof course.grade !== "string") {
+    throw httpError(400, "Grade must be a string.");
+  }
+  if (course.creditHours !== null && course.creditHours !== undefined && typeof course.creditHours !== "number") {
+    throw httpError(400, "Credit hours must be a number.");
+  }
+  const courseCode = typeof course.courseCode === "string" ? course.courseCode.trim() : "";
+  const courseTitle = typeof course.courseTitle === "string" ? course.courseTitle.trim() : "";
+  const grade = typeof course.grade === "string" ? course.grade.trim().toUpperCase() : "";
+  const creditHours = course.creditHours === null || course.creditHours === undefined
+    ? null
+    : Number(course.creditHours);
+
+  if (!courseTitle || courseTitle.length > 200) {
+    throw httpError(400, "Course name is required and must be 200 characters or fewer.");
+  }
+  if (courseCode.length > 80) throw httpError(400, "Course code must be 80 characters or fewer.");
+  if (!isCompletedGrade(grade)) {
+    throw httpError(400, `Grade "${grade || "(missing)"}" is not recognized as completed coursework.`);
+  }
+  if (
+    creditHours !== null
+    && (!Number.isFinite(creditHours) || creditHours < 0 || creditHours > 999.9 || Math.round(creditHours * 10) !== creditHours * 10)
+  ) {
+    throw httpError(400, "Credit hours must be between 0 and 999.9 with at most one decimal place.");
+  }
+
+  return { courseCode: courseCode || null, courseTitle, grade, creditHours };
+}
+
+async function readCourseUpload(request) {
+  const contentType = request.headers["content-type"] || "";
+  if (!/^multipart\/form-data\s*;/i.test(contentType)) {
+    throw httpError(415, "Upload a CSV or PDF file using multipart form data.");
+  }
+
+  const contentLength = Number(request.headers["content-length"]);
+  if (Number.isFinite(contentLength) && contentLength > maxFileSize + maxMultipartOverhead) {
+    throw httpError(413, "Files must be 10 MB or smaller.");
+  }
+
+  let totalBytes = 0;
+  const boundedBody = Readable.from((async function* () {
+    for await (const chunk of request) {
+      totalBytes += chunk.length;
+      if (totalBytes > maxFileSize + maxMultipartOverhead) {
+        throw httpError(413, "Files must be 10 MB or smaller.");
+      }
+      yield chunk;
+    }
+  })());
+
+  let formData;
+  try {
+    const body = Readable.toWeb(boundedBody);
+    const formRequest = new Request("http://careerpath.local/upload", {
+      method: "POST",
+      headers: { "content-type": contentType },
+      body,
+      duplex: "half",
+    });
+    formData = await formRequest.formData();
+  } catch (error) {
+    if (error && Number.isInteger(error.status)) throw error;
+    throw httpError(400, "The multipart upload is malformed. Choose a CSV or PDF file and try again.");
+  }
+
+  const entries = [...formData.entries()];
+  if (entries.length !== 1 || entries[0][0] !== "file" || !(entries[0][1] instanceof File)) {
+    throw httpError(400, "Attach one CSV or PDF file in the 'file' field.");
+  }
+  const file = entries[0][1];
+  const fileName = basename(file.name.replace(/\\/g, "/"));
+  const mediaType = file.type.toLowerCase();
+  if (!fileName || fileName.length > 255) {
+    throw httpError(415, "The course file name is invalid.");
+  }
+  const extension = fileName.toLowerCase().slice(fileName.lastIndexOf("."));
+  if (extension !== ".csv" && extension !== ".pdf") {
+    throw httpError(415, "Only CSV and PDF course files can be extracted.");
+  }
+  if (extension === ".csv" && !acceptedCsvMediaTypes.has(mediaType)) {
+    throw httpError(415, "The file must be a CSV document.");
+  }
+  if (extension === ".pdf" && !acceptedPdfMediaTypes.has(mediaType)) {
+    throw httpError(415, "The file must be a PDF document.");
+  }
+  if (!file.size) throw httpError(400, "The uploaded file is empty.");
+  if (file.size > maxFileSize) throw httpError(413, "Files must be 10 MB or smaller.");
+
+  return {
+    fileName,
+    mediaType: mediaType || (extension === ".pdf" ? "application/pdf" : "text/csv"),
+    format: extension.slice(1),
+    size: file.size,
+    content: Buffer.from(await file.arrayBuffer()),
+  };
+}
+
 async function getDemoContext() {
   const user = await prisma.user.findUnique({
     where: { id: demoUserId },
@@ -110,7 +262,21 @@ async function getDemoContext() {
       },
       skills: { include: { skill: true } },
       savedJobs: { select: { jobId: true } },
-      courseImports: { orderBy: { createdAt: "desc" }, take: 1 },
+      courses: {
+        where: { completionStatus: "COMPLETED" },
+        orderBy: { createdAt: "desc" },
+        include: { course: true },
+      },
+      courseImports: {
+        orderBy: { createdAt: "desc" },
+        take: 1,
+        include: {
+          extractedCourses: {
+            orderBy: { createdAt: "asc" },
+            include: { recognizedCourse: true },
+          },
+        },
+      },
     },
   });
   if (!user) {
@@ -161,15 +327,16 @@ async function buildBootstrap() {
       .map(({ skill }) => skill.name)
       .sort((a, b) => a.localeCompare(b)),
     roadmap: activities.map(mapActivity),
-    courseImport: user.courseImports[0]
-      ? {
-          id: user.courseImports[0].id,
-          fileName: user.courseImports[0].fileName,
-          mediaType: user.courseImports[0].mediaType,
-          size: Number(user.courseImports[0].storageKey.split(":").pop() || 0),
-          status: user.courseImports[0].status,
-        }
-      : null,
+    courseImport: user.courseImports[0] ? mapCourseImport(user.courseImports[0]) : null,
+    completedCourses: user.courses.map((course) => ({
+      id: course.id,
+      courseCode: course.courseCode,
+      courseTitle: course.courseTitle,
+      grade: course.grade,
+      creditHours: course.credits === null ? null : Number(course.credits),
+      institutionName: course.institutionName,
+      term: course.term,
+    })),
     jobs: jobs.map((job) => {
       const requiredSkills = job.skills
         .map(({ skill }) => skill)
@@ -331,33 +498,248 @@ app.delete("/api/profile/skills/:normalizedName", async (request, response) => {
 });
 
 app.post("/api/profile/course-imports", async (request, response) => {
+  if (!request.is("multipart/form-data")) {
+    throw httpError(415, "Course upload requires a CSV or PDF file in multipart form data.");
+  }
+  const upload = await readCourseUpload(request);
+  let parsedCourses;
+  try {
+    parsedCourses = upload.format === "pdf"
+      ? await parseCoursePdf(upload.content)
+      : parseCourseCsv(upload.content);
+  } catch (error) {
+    throw httpError(422, error.message || "The CSV could not be read.");
+  }
   const { user } = await getDemoContext();
-  const { fileName, mediaType, size } = request.body || {};
-  if (typeof fileName !== "string" || !fileName.trim() || fileName.trim().length > 255) {
-    throw httpError(400, "fileName is required and must be 255 characters or fewer.");
-  }
-  if (typeof mediaType !== "string" || mediaType.length > 120) {
-    throw httpError(400, "mediaType must be a valid file type.");
-  }
-  const extension = `.${fileName.trim().split(".").pop()?.toLowerCase() || ""}`;
-  const expectedType = supportedFileTypes.get(extension);
-  if (!expectedType || (mediaType && mediaType !== expectedType)) {
-    throw httpError(400, "Choose a supported PDF, DOC, DOCX, or CSV file.");
-  }
-  if (!Number.isInteger(size) || size < 1 || size > maxFileSize) {
-    throw httpError(400, "Files must be between 1 byte and 10 MB.");
-  }
-  await prisma.courseImport.deleteMany({ where: { userId: user.id } });
-  const imported = await prisma.courseImport.create({
-    data: {
-      userId: user.id,
-      fileName: fileName.trim(),
-      mediaType,
-      storageKey: `metadata:${user.id}:${Date.now()}:${size}`,
-      status: "UPLOADED",
-    },
+
+  const catalog = await prisma.course.findMany({
+    select: { id: true, institutionName: true, courseCode: true, title: true },
   });
-  response.status(201).json({ id: imported.id, fileName: imported.fileName, mediaType: imported.mediaType, size, status: imported.status });
+  const extractedCourses = parsedCourses.map((course) => {
+    const match = findCatalogMatch(course, catalog);
+    return {
+      ...course,
+      recognizedCourseId: match?.id || null,
+      confidence: match ? 1 : null,
+      reviewStatus: course.reviewStatus === "UNRECOGNIZED" || !match ? "UNRECOGNIZED" : "RECOGNIZED",
+      reviewNote: course.reviewNote || (match ? null : "No exact catalog match; review this course before confirming."),
+    };
+  });
+
+  const imported = await prisma.$transaction(async (transaction) => {
+    await transaction.courseImport.deleteMany({ where: { userId: user.id } });
+    const courseImport = await transaction.courseImport.create({
+      data: {
+        userId: user.id,
+        fileName: upload.fileName,
+        mediaType: upload.mediaType,
+        storageKey: `memory:${user.id}:${randomUUID()}:${upload.size}`,
+        status: "PROCESSING",
+      },
+    });
+    await transaction.extractedCourse.createMany({
+      data: extractedCourses.map((course) => ({
+        courseImportId: courseImport.id,
+        recognizedCourseId: course.recognizedCourseId,
+        rawText: course.rawText,
+        institutionName: course.institutionName,
+        courseCode: course.courseCode,
+        courseTitle: course.courseTitle,
+        creditHours: course.creditHours,
+        term: course.term,
+        grade: course.grade,
+        confidence: course.confidence,
+        reviewStatus: course.reviewStatus,
+        reviewNote: course.reviewNote,
+      })),
+    });
+    await transaction.courseImport.update({
+      where: { id: courseImport.id },
+      data: { status: "REVIEW_REQUIRED" },
+    });
+    return transaction.courseImport.findUnique({
+      where: { id: courseImport.id },
+      include: {
+        extractedCourses: {
+          orderBy: { createdAt: "asc" },
+          include: { recognizedCourse: true },
+        },
+      },
+    });
+  });
+  response.status(201).json(mapCourseImport(imported));
+});
+
+app.post("/api/profile/course-imports/:importId/confirm", async (request, response) => {
+  const { user, roadmap } = await getDemoContext();
+  const submittedCourses = request.body?.courses;
+  if (!Array.isArray(submittedCourses) || submittedCourses.length > 500) {
+    throw httpError(400, "Choose up to 500 extracted courses to confirm.");
+  }
+  if (!submittedCourses.length) throw httpError(400, "Select at least one course to confirm.");
+  const submittedIds = submittedCourses.map((course) => course?.id);
+  if (submittedIds.some((id) => typeof id !== "string") || new Set(submittedIds).size !== submittedIds.length) {
+    throw httpError(400, "The selected course list contains an invalid or repeated course.");
+  }
+
+  const result = await prisma.$transaction(async (transaction) => {
+    const courseImport = await transaction.courseImport.findFirst({
+      where: { id: request.params.importId, userId: user.id },
+      include: {
+        extractedCourses: { include: { recognizedCourse: true } },
+      },
+    });
+    if (!courseImport) throw httpError(404, "Course import was not found.");
+    if (courseImport.status === "CONFIRMED") {
+      return {
+        added: 0,
+        skipped: courseImport.extractedCourses.filter((course) => course.reviewStatus === "CONFIRMED").length,
+        roadmapActivitiesAdded: 0,
+        alreadyConfirmed: true,
+        courseImport,
+      };
+    }
+    if (courseImport.status !== "REVIEW_REQUIRED") {
+      throw httpError(409, "This course import is not ready for confirmation.");
+    }
+
+    const extractedById = new Map(courseImport.extractedCourses.map((course) => [course.id, course]));
+    const selected = submittedCourses.map((course) => {
+      const extracted = extractedById.get(course.id);
+      if (!extracted || extracted.reviewStatus === "REMOVED") {
+        throw httpError(400, "One or more selected courses do not belong to this import.");
+      }
+      return { extracted, course: validateConfirmedCourse(course) };
+    });
+    const selectedIds = new Set(submittedIds);
+    await transaction.extractedCourse.updateMany({
+      where: {
+        courseImportId: courseImport.id,
+        id: { notIn: [...selectedIds] },
+      },
+      data: { reviewStatus: "REMOVED", reviewNote: "Removed by the student during review." },
+    });
+
+    const existingCourses = await transaction.studentCourse.findMany({
+      where: { userId: user.id, completionStatus: "COMPLETED" },
+      select: { courseCode: true, courseTitle: true, deduplicationKey: true },
+    });
+    const catalog = await transaction.course.findMany({
+      select: { id: true, institutionName: true, courseCode: true, title: true },
+    });
+    const requestKeys = new Set();
+    let added = 0;
+    let skipped = 0;
+    let position = roadmap
+      ? (await transaction.roadmapActivity.aggregate({
+          where: { roadmapId: roadmap.id },
+          _max: { position: true },
+        }))._max.position ?? -1
+      : -1;
+
+    for (const { extracted, course } of selected) {
+      const catalogMatch = findCatalogMatch(
+        { ...course, institutionName: extracted.institutionName },
+        catalog,
+      );
+      if (isDuplicateCourse(course, existingCourses, requestKeys)) {
+        await transaction.extractedCourse.update({
+          where: { id: extracted.id },
+          data: {
+            courseCode: course.courseCode,
+            courseTitle: course.courseTitle,
+            grade: course.grade,
+            creditHours: course.creditHours,
+            recognizedCourseId: catalogMatch?.id || null,
+            reviewStatus: "CONFIRMED",
+            reviewNote: "Already recorded; this duplicate was skipped.",
+          },
+        });
+        skipped += 1;
+        continue;
+      }
+
+      const studentCourse = await transaction.studentCourse.create({
+        data: {
+          userId: user.id,
+          courseId: catalogMatch?.id,
+          sourceImportId: courseImport.id,
+          institutionName: extracted.institutionName,
+          courseCode: course.courseCode,
+          courseTitle: course.courseTitle,
+          credits: course.creditHours,
+          term: extracted.term,
+          grade: course.grade,
+          deduplicationKey: makeDeduplicationKey(course.courseCode, course.courseTitle),
+          completionStatus: "COMPLETED",
+        },
+      });
+      await transaction.extractedCourse.update({
+        where: { id: extracted.id },
+        data: {
+          studentCourseId: studentCourse.id,
+          recognizedCourseId: catalogMatch?.id || null,
+          courseCode: course.courseCode,
+          courseTitle: course.courseTitle,
+          grade: course.grade,
+          creditHours: course.creditHours,
+          reviewStatus: "CONFIRMED",
+          reviewNote: catalogMatch ? "Matched to the course catalog." : "Saved as provided; no exact catalog match was found.",
+        },
+      });
+      existingCourses.push({
+        courseCode: course.courseCode,
+        courseTitle: course.courseTitle,
+        deduplicationKey: makeDeduplicationKey(course.courseCode, course.courseTitle),
+      });
+      added += 1;
+      if (roadmap) {
+        const title = `${course.courseCode ? `${course.courseCode} - ` : ""}${course.courseTitle}`.slice(0, 100);
+        const details = [
+          course.grade ? `Grade ${course.grade}.` : "",
+          course.creditHours !== null ? `${course.creditHours} credit hours.` : "",
+        ].filter(Boolean).join(" ");
+        await transaction.roadmapActivity.create({
+          data: {
+            roadmapId: roadmap.id,
+            studentCourseId: studentCourse.id,
+            title,
+            category: "TRANSFER_CREDIT",
+            duration: course.creditHours === null ? "Completed course" : `${course.creditHours} credits`,
+            description: (details || "Completed coursework confirmed from an uploaded course list.").slice(0, 240),
+            status: "COMPLETED",
+            position: ++position,
+          },
+        });
+      }
+    }
+
+    const updatedImport = await transaction.courseImport.update({
+      where: { id: courseImport.id },
+      data: { status: "CONFIRMED" },
+      include: {
+        extractedCourses: {
+          orderBy: { createdAt: "asc" },
+          include: { recognizedCourse: true },
+        },
+      },
+    });
+    return {
+      added,
+      skipped,
+      roadmapActivitiesAdded: roadmap ? added : 0,
+      alreadyConfirmed: false,
+      courseImport: updatedImport,
+    };
+  });
+
+  response.json({
+    added: result.added,
+    skipped: result.skipped,
+    roadmapActivitiesAdded: result.roadmapActivitiesAdded,
+    alreadyConfirmed: result.alreadyConfirmed,
+    courseImport: mapCourseImport(result.courseImport),
+  });
 });
 
 app.delete("/api/profile/course-imports/:importId", async (request, response) => {

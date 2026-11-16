@@ -1,15 +1,9 @@
 export const SUPPORTED_FILE_TYPES = [
-  { extension: ".pdf", mimeTypes: ["application/pdf"] },
-  { extension: ".doc", mimeTypes: ["application/msword"] },
-  {
-    extension: ".docx",
-    mimeTypes: ["application/vnd.openxmlformats-officedocument.wordprocessingml.document"],
-  },
-  
   { extension: ".csv", mimeTypes: ["text/csv", "application/vnd.ms-excel", "text/plain"] },
+  { extension: ".pdf", mimeTypes: ["application/pdf"] },
 ] as const;
 
-export const SUPPORTED_FILE_LABEL = "PDF, DOC, DOCX or CSV";
+export const SUPPORTED_FILE_LABEL = "CSV or PDF";
 export const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024; // 10 MB
 
 export type UploadFile = { name: string; size: number; type?: string };
@@ -40,12 +34,12 @@ export function validateUpload(file: UploadFile | null | undefined): ValidationR
   if (file.type && !(supported.mimeTypes as readonly string[]).includes(file.type)) {
     return {
       valid: false,
-      error: `This file's contents don't match its ${extension} extension. Please upload a valid ${SUPPORTED_FILE_LABEL} file.`,
+      error: `This file's contents don't match its ${extension} extension. Please upload a valid ${extension.slice(1).toUpperCase()} file.`,
     };
   }
 
   if (file.size === 0) {
-    return { valid: false, error: "This file is empty. Please choose a file that contains your course list." };
+    return { valid: false, error: "This file is empty. Please choose a transcript that contains coursework." };
   }
 
   if (file.size > MAX_FILE_SIZE_BYTES) {

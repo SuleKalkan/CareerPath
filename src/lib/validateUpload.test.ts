@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { MAX_FILE_SIZE_BYTES, validateUpload } from "./validateUpload";
 
 describe("validateUpload", () => {
-  it.each(["courses.csv", "transcript.pdf", "history.doc", "history.docx", "COURSES.CSV"])(
+  it.each(["courses.csv", "COURSES.CSV"])(
     "accepts %s",
     (name) => {
       expect(validateUpload({ name, size: 2048 })).toEqual({ valid: true });
@@ -15,12 +15,18 @@ describe("validateUpload", () => {
     ).toEqual({ valid: true });
   });
 
+  it("accepts PDF transcript files", () => {
+    expect(validateUpload({ name: "transcript.pdf", size: 2048, type: "application/pdf" })).toEqual({
+      valid: true,
+    });
+  });
+
   it("rejects unsupported types and names the extension", () => {
     const result = validateUpload({ name: "photo.png", size: 2048 });
     expect(result.valid).toBe(false);
     if (!result.valid) {
       expect(result.error).toContain(".png");
-      expect(result.error).toContain("PDF, DOC, DOCX or CSV");
+      expect(result.error).toContain("CSV");
     }
   });
 
@@ -32,18 +38,20 @@ describe("validateUpload", () => {
     expect(validateUpload({ name: "courses", size: 2048 }).valid).toBe(false);
   });
 
-  it("rejects a PDF whose MIME type is an image", () => {
-    expect(validateUpload({ name: "fake.pdf", size: 2048, type: "image/png" }).valid).toBe(false);
+  it("rejects a PDF with a mismatched media type", () => {
+    const result = validateUpload({ name: "transcript.pdf", size: 2048, type: "text/plain" });
+    expect(result.valid).toBe(false);
+    if (!result.valid) expect(result.error).toContain("valid PDF");
   });
 
   it("rejects files over 10 MB with a size message", () => {
-    const result = validateUpload({ name: "big.pdf", size: MAX_FILE_SIZE_BYTES + 1 });
+    const result = validateUpload({ name: "big.csv", size: MAX_FILE_SIZE_BYTES + 1 });
     expect(result.valid).toBe(false);
     if (!result.valid) expect(result.error).toContain("10 MB");
   });
 
   it("accepts a file exactly at 10 MB", () => {
-    expect(validateUpload({ name: "limit.pdf", size: MAX_FILE_SIZE_BYTES })).toEqual({ valid: true });
+    expect(validateUpload({ name: "limit.csv", size: MAX_FILE_SIZE_BYTES })).toEqual({ valid: true });
   });
 
   it("rejects an empty file", () => {

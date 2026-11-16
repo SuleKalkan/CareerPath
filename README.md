@@ -55,7 +55,9 @@ The seeded Cybersecurity Analyst Intern listing has five required skills. Maya s
 
 The app is linked to the Neon project [`green-flower-30510503`](https://console.neon.tech/app/projects/green-flower-30510503/). Its `production` branch has the initial Prisma migration applied and the synthetic demo seed loaded. `DATABASE_URL` is the pooled connection for API queries, and `DATABASE_URL_UNPOOLED` is the direct connection for Prisma migrations. Keep both values private; never commit them or expose them through a `VITE_` variable.
 
-The API currently serves the seeded Jordan Lee demo account (`DEMO_USER_ID` in `.env.local`). It persists job saves, profile skills, roadmap activity changes, and the latest resume/transcript upload metadata. The upload feature validates PDF, DOC, DOCX, and CSV files up to 10 MB; file contents are not stored because no document-storage service is configured. This API has no authentication and is loopback-only by default; it refuses to start with `NODE_ENV=production`. Do not expose it publicly or deploy it until authentication and authorization have been implemented.
+The API currently serves the seeded Jordan Lee demo account (`DEMO_USER_ID` in `.env.local`). It persists job saves, profile skills, roadmap activity changes, and completed courses. Course extraction accepts UTF-8 CSV files and PDF transcripts up to 10 MB and 30 pages. PDFs are processed locally; scanned pages use English OCR. The uploaded file is discarded after parsing; extracted rows are saved for student review, and only explicitly confirmed courses are written to the course history. A confirmed course creates a completed **Transfer credit** roadmap activity when the student has a roadmap. There is no course-to-skill mapping, so imported courses do not mark career skills complete.
+
+The course import API uses `POST /api/profile/course-imports` with a multipart `file` field, then `POST /api/profile/course-imports/:importId/confirm` with the reviewed course IDs and corrections. `GET /api/bootstrap` returns the latest import and saved completed courses. PDF parsing recognizes common transcript rows containing a course name and grade, with optional course code, credits, and term; scanned pages use English OCR, so review extracted values before confirming them. DOC and DOCX uploads are not supported. The `20261115195300_course_credit_hours` migration is applied to the currently configured Neon database. The API has no authentication and is loopback-only by default; it refuses to start with `NODE_ENV=production`. Do not expose it publicly or deploy it until authentication and authorization have been implemented.
 
 ## Implemented feature: interactive career roadmap
 
@@ -63,7 +65,13 @@ The roadmap lets students add and remove activities, track them from **Not start
 
 ## Test the feature
 
-There is no automated test script in the project yet. To check the roadmap integration manually:
+Run the focused automated tests with:
+
+```bash
+npm test
+```
+
+To check the roadmap integration manually:
 
 1. Start the API and frontend as described above, then open **Explore jobs**.
 2. Open a job and note its match percentage and missing skills.
@@ -71,7 +79,8 @@ There is no automated test script in the project yet. To check the roadmap integ
 4. Mark it **In progress** and check that the skill is shown as planned in the roadmap’s skill coverage. Open it again and mark it **Completed**; the coverage should update and the job match should increase.
 5. Remove the completed activity and confirm the roadmap and skill coverage update. The job match should decrease if the skill is not also in your profile.
 6. Refresh the page and verify the saved jobs, profile skills, and roadmap changes are still present.
-7. Run the production build as a separate check:
+7. In **My profile**, upload a UTF-8 CSV with a `Course Name` or `Course` column and a `Grade` column, or upload a PDF transcript. Review the extracted rows, correct or remove entries, and confirm the remaining courses. Confirm that completed courses appear in the profile and as transfer-credit roadmap activities. Upload the same course again to verify that it is skipped as a duplicate.
+8. Run the production build as a separate check:
 
    ```bash
    npm run build

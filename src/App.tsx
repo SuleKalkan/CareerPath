@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   addProfileSkill as addProfileSkillRequest,
+  confirmCourseImport as confirmCourseImportRequest,
   createRoadmapActivity,
   deleteRoadmapActivity,
   loadAppData,
@@ -8,9 +9,12 @@ import {
   removeProfileSkill as removeProfileSkillRequest,
   saveJob,
   unsaveJob,
-  uploadCourseFile,
+  uploadCourseFileForExtraction,
   updateRoadmapActivity,
   type AppData,
+  type CompletedCourse,
+  type CourseConfirmation,
+  type CourseImport,
   type Job,
   type RoadmapItem,
 } from "./api";
@@ -42,7 +46,9 @@ type IconName =
 type MatchedJob = Job;
 
 type NewRoadmapItem = Omit<RoadmapItem, "id" | "status">;
-type CourseUploadStatus = "idle" | "uploading" | "success" | "error";
+type CourseUploadStatus = "idle" | "uploading" | "processing" | "success" | "error";
+type PendingCourseFile = { details: SelectedFile; file: File };
+type CourseReviewDraft = Omit<CourseConfirmation, "creditHours"> & { creditHoursInput: string; reviewStatus: string; reviewNote: string | null };
 type SkillCoverageStatus = "In profile" | "Completed" | "Planned" | "Needs activity";
 
 function getInitials(name: string): string {
@@ -165,6 +171,141 @@ function AppButton({
       {icon && <Icon name={icon} size={18} />}
       {children}
     </button>
+  );
+}
+
+function CourseUploadFeedback({
+  hasPendingFile,
+  status,
+  error,
+  resultStatus,
+  onUpload,
+}: {
+  hasPendingFile: boolean;
+  status: CourseUploadStatus;
+  error: string;
+  resultStatus: string | null;
+  onUpload: () => void;
+}) {
+  if (!hasPendingFile && status === "idle") return null;
+
+  const message = status === "uploading"
+    ? "Uploading course file…"
+    : status === "processing"
+      ? "Upload complete. Extracting courses…"
+      : status === "success"
+        ? resultStatus || "Courses extracted successfully."
+        : status === "error"
+          ? error
+          : "Ready to upload.";
+
+  return (
+    <div>
+      <p className={`course-upload-status ${status}`} role={status === "error" ? "alert" : "status"}>
+        {message}
+      </p>
+      {hasPendingFile && (
+        <div className="course-upload-actions">
+          <AppButton onClick={onUpload} disabled={status === "uploading" || status === "processing"}>
+            {status === "uploading" ? "Uploading…" : status === "processing" ? "Processing…" : status === "error" ? "Retry upload" : "Upload for extraction"}
+          </AppButton>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CourseReviewPanel({
+  courseImport,
+  confirming,
+  error,
+  onConfirm,
+}: {
+  courseImport: CourseImport | null;
+  confirming: boolean;
+  error: string;
+  onConfirm: (courses: CourseConfirmation[]) => void;
+}) {
+  const [courses, setCourses] = useState<CourseReviewDraft[]>([]);
+  const [validationError, setValidationError] = useState("");
+
+  useEffect(() => {
+    setCourses((courseImport?.extractedCourses || []).map((course) => ({
+      id: course.id,
+      courseCode: course.courseCode,
+      courseTitle: course.courseTitle,
+      grade: course.grade,
+      creditHoursInput: course.creditHours === null ? "" : String(course.creditHours),
+      reviewStatus: course.reviewStatus,
+      reviewNote: course.reviewNote,
+    })));
+    setValidationError("");
+  }, [courseImport?.id, courseImport?.status]);
+
+  if (!courseImport || courseImport.status !== "REVIEW_REQUIRED") return null;
+
+  const updateCourse = (id: string, updates: Partial<CourseReviewDraft>) => {
+    setCourses((current) => current.map((course) => course.id === id ? { ...course, ...updates } : course));
+  };
+  const confirm = () => {
+    if (!courses.length) {
+      setValidationError("Keep at least one course to confirm.");
+      return;
+    }
+    const invalidCredits = courses.some((course) => {
+      if (!course.creditHoursInput.trim()) return false;
+      const hours = Number(course.creditHoursInput);
+      return !Number.isFinite(hours) || hours < 0 || hours > 999.9 || Math.round(hours * 10) !== hours * 10;
+    });
+    if (invalidCredits) {
+      setValidationError("Credit hours must be between 0 and 999.9 with at most one decimal place.");
+      return;
+    }
+    setValidationError("");
+    onConfirm(courses.map((course) => ({
+      id: course.id,
+      courseCode: course.courseCode?.trim() || null,
+      courseTitle: course.courseTitle?.trim() || "",
+      grade: course.grade?.trim().toUpperCase() || "",
+      creditHours: course.creditHoursInput.trim() ? Number(course.creditHoursInput) : null,
+    })));
+  };
+
+  return (
+    <section className="panel course-review">
+      <div className="section-heading">
+        <div>
+          <span className="eyebrow">Review extracted courses</span>
+          <h3>{courseImport.extractedCourses.length} courses found</h3>
+        </div>
+      </div>
+      <p className="course-review-intro">Correct any details before saving. Courses without an exact catalog match are still available to confirm.</p>
+      <div className="course-review-list">
+        {courses.map((course) => (
+          <article className="course-review-row" key={course.id}>
+            <div className="course-review-row-heading">
+              <span className={`course-review-badge ${course.reviewStatus === "UNRECOGNIZED" ? "unrecognized" : ""}`}>
+                {course.reviewStatus === "UNRECOGNIZED" ? "Needs review" : "Catalog match"}
+              </span>
+              <button type="button" className="text-button" onClick={() => setCourses((current) => current.filter((item) => item.id !== course.id))} disabled={confirming}>
+                Remove
+              </button>
+            </div>
+            <div className="course-review-fields">
+              <label>Course code<input value={course.courseCode || ""} maxLength={80} onChange={(event) => updateCourse(course.id, { courseCode: event.target.value || null })} disabled={confirming} /></label>
+              <label>Course name<input value={course.courseTitle || ""} maxLength={200} onChange={(event) => updateCourse(course.id, { courseTitle: event.target.value })} disabled={confirming} /></label>
+              <label>Grade<input value={course.grade || ""} maxLength={40} onChange={(event) => updateCourse(course.id, { grade: event.target.value })} disabled={confirming} /></label>
+              <label>Credit hours<input type="number" min="0" max="999.9" step="0.1" value={course.creditHoursInput} onChange={(event) => updateCourse(course.id, { creditHoursInput: event.target.value })} disabled={confirming} /></label>
+            </div>
+            {course.reviewNote && <p className="course-review-note">{course.reviewNote}</p>}
+          </article>
+        ))}
+      </div>
+      {(validationError || error) && <p className="course-upload-status error" role="alert">{validationError || error}</p>}
+      <AppButton onClick={confirm} disabled={confirming}>
+        {confirming ? "Saving courses…" : `Confirm ${courses.length} courses`}
+      </AppButton>
+    </section>
   );
 }
 
@@ -466,6 +607,15 @@ function RoadmapView({
   courseFile,
   importCourses,
   removeCourseFile,
+  hasPendingCourseFile,
+  courseUploadStatus,
+  courseUploadError,
+  courseUploadResultStatus,
+  courseImport,
+  confirmingCourses,
+  courseConfirmError,
+  onConfirmCourses,
+  onUploadCourseFile,
 }: {
   roadmap: RoadmapItem[];
   profileSkills: string[];
@@ -476,8 +626,17 @@ function RoadmapView({
   removeActivity: (id: string) => Promise<void>;
   updateStatus: (id: string, status: RoadmapItem["status"]) => Promise<void>;
   courseFile: SelectedFile | null;
-  importCourses: (file: SelectedFile) => void;
+  importCourses: (file: SelectedFile, originalFile: File) => void;
   removeCourseFile: () => void;
+  hasPendingCourseFile: boolean;
+  courseUploadStatus: CourseUploadStatus;
+  courseUploadError: string;
+  courseUploadResultStatus: string | null;
+  courseImport: CourseImport | null;
+  confirmingCourses: boolean;
+  courseConfirmError: string;
+  onConfirmCourses: (courses: CourseConfirmation[]) => void;
+  onUploadCourseFile: () => void;
 }) {
   const [selected, setSelected] = useState<RoadmapItem | null>(null);
   const [addingActivity, setAddingActivity] = useState(false);
@@ -612,26 +771,29 @@ function RoadmapView({
             <div>
               <span className="eyebrow">Academic history</span>
               <h3>Import completed courses</h3>
-              <p>Upload a transcript or course history so completed and transfer credits can shape your roadmap.</p>
+              <p>Upload a CSV or PDF transcript to extract completed courses for your roadmap.</p>
             </div>
-            <FileUpload file={courseFile} onSelect={importCourses} onRemove={removeCourseFile} onError={(message) => window.alert(message)} label="Upload course history" />
-            {/*
-              <input
-                type="file"
-                accept=".pdf,.doc,.docx,.csv"
-                onChange={(event) => {
-                  const file = event.target.files?.[0];
-                  if (file) onSelectCourseFile(file);
-                }}
-                disabled={courseUploadStatus === "uploading"}
-              />
-              <span><Icon name={courseUploadStatus === "success" ? "check" : "upload"} /></span>
-              <div>
-                <strong>{courseFile?.name || "Upload course history"}</strong>
-                <small>{courseFile ? "Selected · Ready to upload" : "PDF, DOCX or CSV · Helpful for transfer students"}</small>
-              </div>
-              <b>{courseFile ? "Replace" : "Choose file"}</b>
-            </label>*/}
+            <FileUpload
+              file={courseFile}
+              onSelect={importCourses}
+              onRemove={removeCourseFile}
+              onError={(message) => window.alert(message)}
+              label="Upload course transcript"
+              disabled={courseUploadStatus === "uploading" || courseUploadStatus === "processing"}
+            />
+            <CourseUploadFeedback
+              hasPendingFile={hasPendingCourseFile}
+              status={courseUploadStatus}
+              error={courseUploadError}
+              resultStatus={courseUploadResultStatus}
+              onUpload={onUploadCourseFile}
+            />
+            <CourseReviewPanel
+              courseImport={courseImport}
+              confirming={confirmingCourses}
+              error={courseConfirmError}
+              onConfirm={onConfirmCourses}
+            />
           </section>
           <section className="panel roadmap-aside">
             <span className="stat-icon green"><Icon name="spark" /></span>
@@ -708,6 +870,16 @@ function ProfileView({
   courseFile,
   onUploadFile,
   onRemoveFile,
+  hasPendingCourseFile,
+  courseUploadStatus,
+  courseUploadError,
+  courseUploadResultStatus,
+  courseImport,
+  confirmingCourses,
+  courseConfirmError,
+  completedCourses,
+  onConfirmCourses,
+  onUploadCourseFile,
 }: {
   skills: string[];
   displayName: string;
@@ -715,8 +887,18 @@ function ProfileView({
   onAddSkill: (skill: string) => Promise<void>;
   onRemoveSkill: (skill: string) => void;
   courseFile: SelectedFile | null;
-  onUploadFile: (file: SelectedFile) => void;
+  onUploadFile: (file: SelectedFile, originalFile: File) => void;
   onRemoveFile: () => void;
+  hasPendingCourseFile: boolean;
+  courseUploadStatus: CourseUploadStatus;
+  courseUploadError: string;
+  courseUploadResultStatus: string | null;
+  courseImport: CourseImport | null;
+  confirmingCourses: boolean;
+  courseConfirmError: string;
+  completedCourses: CompletedCourse[];
+  onConfirmCourses: (courses: CourseConfirmation[]) => void;
+  onUploadCourseFile: () => void;
 }) {
   const [adding, setAdding] = useState(false);
   const [newSkill, setNewSkill] = useState("");
@@ -748,7 +930,39 @@ function ProfileView({
           </section>
           <section className="panel profile-section">
             <div className="section-heading"><div><span className="eyebrow">Documents</span><h3>Resume & coursework</h3></div></div>
-            <FileUpload file={courseFile} onSelect={onUploadFile} onRemove={onRemoveFile} onError={(message) => window.alert(message)} label="Upload your resume or transcript" />
+            <FileUpload
+              file={courseFile}
+              onSelect={onUploadFile}
+              onRemove={onRemoveFile}
+              onError={(message) => window.alert(message)}
+              label="Upload a course transcript"
+              disabled={courseUploadStatus === "uploading" || courseUploadStatus === "processing"}
+            />
+            <CourseUploadFeedback
+              hasPendingFile={hasPendingCourseFile}
+              status={courseUploadStatus}
+              error={courseUploadError}
+              resultStatus={courseUploadResultStatus}
+              onUpload={onUploadCourseFile}
+            />
+            <CourseReviewPanel
+              courseImport={courseImport}
+              confirming={confirmingCourses}
+              error={courseConfirmError}
+              onConfirm={onConfirmCourses}
+            />
+          </section>
+          <section className="panel profile-section">
+            <div className="section-heading"><div><span className="eyebrow">Saved coursework</span><h3>Completed courses</h3></div></div>
+            {completedCourses.length ? (
+              <div className="completed-course-list">
+                {completedCourses.map((course) => (
+                  <article className="completed-course-row" key={course.id}>
+                    <div><strong>{course.courseCode ? `${course.courseCode} · ` : ""}{course.courseTitle}</strong><small>{[course.grade ? `Grade ${course.grade}` : "", course.creditHours === null ? "" : `${course.creditHours} credits`, course.term].filter(Boolean).join(" · ") || "Completed course"}</small></div>
+                  </article>
+                ))}
+              </div>
+            ) : <p className="course-review-intro">Confirmed courses will appear here.</p>}
           </section>
         </div>
       </div>
@@ -762,6 +976,13 @@ export default function App() {
   const [data, setData] = useState<AppData | null>(null);
   const [loadError, setLoadError] = useState("");
   const [loading, setLoading] = useState(true);
+  const [pendingCourseFile, setPendingCourseFile] = useState<PendingCourseFile | null>(null);
+  const [courseUploadStatus, setCourseUploadStatus] = useState<CourseUploadStatus>("idle");
+  const [courseUploadError, setCourseUploadError] = useState("");
+  const [courseUploadResultStatus, setCourseUploadResultStatus] = useState<string | null>(null);
+  const [confirmingCourses, setConfirmingCourses] = useState(false);
+  const [courseConfirmError, setCourseConfirmError] = useState("");
+  const uploadInFlight = useRef(false);
   const [toast, setToast] = useState("");
   const [toastIsError, setToastIsError] = useState(false);
 
@@ -844,15 +1065,91 @@ export default function App() {
   const updateStatus = (id: string, status: RoadmapItem["status"]) => {
     return runMutation(() => updateRoadmapActivity(id, status), "Roadmap progress updated");
   };
-  const courseFile: SelectedFile | null = data?.courseImport
+  const courseFile: SelectedFile | null = pendingCourseFile?.details ?? (data?.courseImport
     ? { name: data.courseImport.fileName, type: data.courseImport.mediaType, size: data.courseImport.size }
-    : null;
-  const importCourses = (file: SelectedFile) => {
-    void runMutation(() => uploadCourseFile(file), `${file.name} uploaded successfully`);
+    : null);
+  const importCourses = (file: SelectedFile, originalFile: File) => {
+    setPendingCourseFile({ details: file, file: originalFile });
+    setCourseUploadStatus("idle");
+    setCourseUploadError("");
+    setCourseUploadResultStatus(null);
+    setCourseConfirmError("");
+  };
+  const submitCourseFile = async () => {
+    const pending = pendingCourseFile;
+    if (!pending || uploadInFlight.current) return;
+    uploadInFlight.current = true;
+    setCourseUploadStatus("uploading");
+    setCourseUploadError("");
+    try {
+      const result: CourseImport = await uploadCourseFileForExtraction(
+        pending.file,
+        () => setCourseUploadStatus("processing"),
+      );
+      if (!result || typeof result.status !== "string") {
+        throw new Error("The course upload service returned an invalid response.");
+      }
+      if (result.status.toUpperCase() === "FAILED") {
+        throw new Error(result.errorMessage || "The backend could not process the course file.");
+      }
+      if (result.status.toUpperCase() !== "REVIEW_REQUIRED") {
+        throw new Error(`The backend returned an unexpected course import status: ${result.status}.`);
+      }
+      setData((current) => current ? { ...current, courseImport: result } : current);
+      setPendingCourseFile(null);
+      setCourseUploadResultStatus(`Extracted ${result.extractedCourses.length} courses. Review them before saving.`);
+      setCourseUploadStatus("success");
+      showToast("Coursework extracted. Review the list before saving.");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Coursework upload failed. Please try again.";
+      setCourseUploadStatus("error");
+      setCourseUploadError(message);
+      showToast(message, true);
+    } finally {
+      uploadInFlight.current = false;
+    }
+  };
+  const confirmCourses = async (courses: CourseConfirmation[]) => {
+    const importId = data?.courseImport?.id;
+    if (!importId || confirmingCourses) return;
+    setConfirmingCourses(true);
+    setCourseConfirmError("");
+    try {
+      const result = await confirmCourseImportRequest(importId, courses);
+      const savedMessage = `${result.added} course${result.added === 1 ? "" : "s"} added${result.skipped ? `, ${result.skipped} duplicate${result.skipped === 1 ? "" : "s"} skipped` : ""}.`;
+      const message = result.alreadyConfirmed ? "These courses were already confirmed." : savedMessage;
+      setCourseUploadResultStatus(message);
+      setData((current) => current ? { ...current, courseImport: result.courseImport } : current);
+      try {
+        setData(await loadAppData());
+        showToast(message);
+      } catch (error) {
+        const refreshError = error instanceof Error ? error.message : "The saved course list could not be refreshed.";
+        showToast(`${message} Refresh the page to see the updated course list.`, true);
+        setCourseConfirmError(`Courses were saved, but refreshing the page data failed: ${refreshError}`);
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Courses could not be saved. Please try again.";
+      setCourseConfirmError(message);
+      showToast(message, true);
+    } finally {
+      setConfirmingCourses(false);
+    }
   };
   const removeCourseFile = () => {
+    if (pendingCourseFile) {
+      setPendingCourseFile(null);
+      setCourseUploadStatus("idle");
+      setCourseUploadError("");
+      setCourseUploadResultStatus(null);
+      return;
+    }
     if (!data?.courseImport) return;
-    void runMutation(() => removeCourseFileRequest(data.courseImport!.id), "Uploaded file removed");
+    void runMutation(() => removeCourseFileRequest(data.courseImport!.id), "Uploaded file removed").then(() => {
+      setCourseUploadStatus("idle");
+      setCourseUploadError("");
+      setCourseUploadResultStatus(null);
+    });
   };
 
   const titles: Record<View, string> = { home: "Overview", jobs: "Explore jobs", saved: "Saved jobs", roadmap: "My roadmap", profile: "My profile" };
@@ -883,8 +1180,8 @@ export default function App() {
         {view === "home" && <Dashboard setView={setView} jobs={matchedJobs} savedCount={saved.length} careerTitle={careerTitle} />}
         {view === "jobs" && <JobsView jobs={matchedJobs} saved={saved} onToggleSave={toggleSave} onAddSkill={addSkill} />}
         {view === "saved" && <SavedView jobs={matchedJobs} saved={saved} onToggleSave={toggleSave} openJobs={() => setView("jobs")} />}
-        {view === "roadmap" && <RoadmapView roadmap={roadmap} profileSkills={profileSkills} careerSkills={data.careerSkills} careerTitle={careerTitle} addActivity={addRoadmapActivity} onAddSkill={addSkill} removeActivity={removeRoadmapActivity} updateStatus={updateStatus} courseFile={courseFile} importCourses={importCourses} removeCourseFile={removeCourseFile} />}
-        {view === "profile" && <ProfileView skills={profileSkills} displayName={displayName} careerTitle={careerTitle} onAddSkill={addProfileSkill} onRemoveSkill={removeProfileSkill} courseFile={courseFile} onUploadFile={importCourses} onRemoveFile={removeCourseFile} />}
+        {view === "roadmap" && <RoadmapView roadmap={roadmap} profileSkills={profileSkills} careerSkills={data.careerSkills} careerTitle={careerTitle} addActivity={addRoadmapActivity} onAddSkill={addSkill} removeActivity={removeRoadmapActivity} updateStatus={updateStatus} courseFile={courseFile} importCourses={importCourses} removeCourseFile={removeCourseFile} hasPendingCourseFile={Boolean(pendingCourseFile)} courseUploadStatus={courseUploadStatus} courseUploadError={courseUploadError} courseUploadResultStatus={courseUploadResultStatus} courseImport={data.courseImport} confirmingCourses={confirmingCourses} courseConfirmError={courseConfirmError} onConfirmCourses={confirmCourses} onUploadCourseFile={() => void submitCourseFile()} />}
+        {view === "profile" && <ProfileView skills={profileSkills} displayName={displayName} careerTitle={careerTitle} onAddSkill={addProfileSkill} onRemoveSkill={removeProfileSkill} courseFile={courseFile} onUploadFile={importCourses} onRemoveFile={removeCourseFile} hasPendingCourseFile={Boolean(pendingCourseFile)} courseUploadStatus={courseUploadStatus} courseUploadError={courseUploadError} courseUploadResultStatus={courseUploadResultStatus} courseImport={data.courseImport} confirmingCourses={confirmingCourses} courseConfirmError={courseConfirmError} completedCourses={data.completedCourses} onConfirmCourses={confirmCourses} onUploadCourseFile={() => void submitCourseFile()} />}
       </main>
       {toast && <div className={`toast ${toastIsError ? "error" : ""}`}><span><Icon name={toastIsError ? "close" : "check"} size={16} /></span>{toast}</div>}
     </div>

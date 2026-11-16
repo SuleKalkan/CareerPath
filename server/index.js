@@ -36,6 +36,13 @@ const typeMap = {
   CONTRACT: "Contract",
   OTHER: "Other",
 };
+const supportedFileTypes = new Map([
+  [".pdf", "application/pdf"],
+  [".doc", "application/msword"],
+  [".docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"],
+  [".csv", "text/csv"],
+]);
+const maxFileSize = 10 * 1024 * 1024;
 
 if (process.env.NODE_ENV === "production") {
   throw new Error("This demo API has no authentication and must not run in production.");
@@ -103,6 +110,7 @@ async function getDemoContext() {
       },
       skills: { include: { skill: true } },
       savedJobs: { select: { jobId: true } },
+      courseImports: { orderBy: { createdAt: "desc" }, take: 1 },
     },
   });
   if (!user) {
@@ -153,6 +161,15 @@ async function buildBootstrap() {
       .map(({ skill }) => skill.name)
       .sort((a, b) => a.localeCompare(b)),
     roadmap: activities.map(mapActivity),
+    courseImport: user.courseImports[0]
+      ? {
+          id: user.courseImports[0].id,
+          fileName: user.courseImports[0].fileName,
+          mediaType: user.courseImports[0].mediaType,
+          size: Number(user.courseImports[0].storageKey.split(":").pop() || 0),
+          status: user.courseImports[0].status,
+        }
+      : null,
     jobs: jobs.map((job) => {
       const requiredSkills = job.skills
         .map(({ skill }) => skill)
@@ -310,6 +327,43 @@ app.delete("/api/profile/skills/:normalizedName", async (request, response) => {
   await prisma.studentSkill.deleteMany({
     where: { userId: user.id, skill: { normalizedName } },
   });
+  response.status(204).end();
+});
+
+app.post("/api/profile/course-imports", async (request, response) => {
+  const { user } = await getDemoContext();
+  const { fileName, mediaType, size } = request.body || {};
+  if (typeof fileName !== "string" || !fileName.trim() || fileName.trim().length > 255) {
+    throw httpError(400, "fileName is required and must be 255 characters or fewer.");
+  }
+  if (typeof mediaType !== "string" || mediaType.length > 120) {
+    throw httpError(400, "mediaType must be a valid file type.");
+  }
+  const extension = `.${fileName.trim().split(".").pop()?.toLowerCase() || ""}`;
+  const expectedType = supportedFileTypes.get(extension);
+  if (!expectedType || (mediaType && mediaType !== expectedType)) {
+    throw httpError(400, "Choose a supported PDF, DOC, DOCX, or CSV file.");
+  }
+  if (!Number.isInteger(size) || size < 1 || size > maxFileSize) {
+    throw httpError(400, "Files must be between 1 byte and 10 MB.");
+  }
+  await prisma.courseImport.deleteMany({ where: { userId: user.id } });
+  const imported = await prisma.courseImport.create({
+    data: {
+      userId: user.id,
+      fileName: fileName.trim(),
+      mediaType,
+      storageKey: `metadata:${user.id}:${Date.now()}:${size}`,
+      status: "UPLOADED",
+    },
+  });
+  response.status(201).json({ id: imported.id, fileName: imported.fileName, mediaType: imported.mediaType, size, status: imported.status });
+});
+
+app.delete("/api/profile/course-imports/:importId", async (request, response) => {
+  const { user } = await getDemoContext();
+  const deleted = await prisma.courseImport.deleteMany({ where: { id: request.params.importId, userId: user.id } });
+  if (!deleted.count) throw httpError(404, "Uploaded file was not found.");
   response.status(204).end();
 });
 

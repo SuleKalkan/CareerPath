@@ -34,6 +34,12 @@ export type AppData = {
   courseImport: { id: string; fileName: string; mediaType: string; size: number; status: string } | null;
 };
 
+export type CourseUploadService = (file: File) => Promise<void>;
+
+export const uploadCourseFileForExtraction: CourseUploadService = async (_file) => {
+  throw new Error("Course uploads are not available until the backend upload service is connected.");
+};
+
 async function request<T>(path: string, method = "GET", body?: unknown): Promise<T> {
   const response = await fetch(`/api${path}`, {
     method,

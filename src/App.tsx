@@ -42,6 +42,7 @@ type IconName =
 type MatchedJob = Job;
 
 type NewRoadmapItem = Omit<RoadmapItem, "id" | "status">;
+type CourseUploadStatus = "idle" | "uploading" | "success" | "error";
 type SkillCoverageStatus = "In profile" | "Completed" | "Planned" | "Needs activity";
 
 function getInitials(name: string): string {
@@ -620,13 +621,14 @@ function RoadmapView({
                 accept=".pdf,.doc,.docx,.csv"
                 onChange={(event) => {
                   const file = event.target.files?.[0];
-                  if (file) importCourses(file.name);
+                  if (file) onSelectCourseFile(file);
                 }}
+                disabled={courseUploadStatus === "uploading"}
               />
-              <span><Icon name={courseFile ? "check" : "upload"} /></span>
+              <span><Icon name={courseUploadStatus === "success" ? "check" : "upload"} /></span>
               <div>
-                <strong>{courseFile || "Upload course history"}</strong>
-                <small>{courseFile ? "Selected locally · Not saved" : "PDF, DOCX or CSV · Helpful for transfer students"}</small>
+                <strong>{courseFile?.name || "Upload course history"}</strong>
+                <small>{courseFile ? "Selected · Ready to upload" : "PDF, DOCX or CSV · Helpful for transfer students"}</small>
               </div>
               <b>{courseFile ? "Replace" : "Choose file"}</b>
             </label>*/}

@@ -13,8 +13,6 @@ function createPrismaMock() {
       deleteMany: vi.fn().mockResolvedValue({ count: 1 }),
       create: vi.fn().mockResolvedValue({
         id: "70000000-0000-4000-8000-000000000010",
-        fileName: "transfer-courses.csv",
-        mediaType: "text/csv",
         status: "UPLOADED",
       }),
     },
@@ -33,21 +31,13 @@ describe("course import data access", () => {
 
     expect(result).toEqual({
       id: "70000000-0000-4000-8000-000000000010",
-      fileName: "transfer-courses.csv",
-      mediaType: "text/csv",
-      size: 2048,
       status: "UPLOADED",
     })
     expect(prisma.courseImport.deleteMany).toHaveBeenCalledWith({
       where: { userId },
     })
     expect(prisma.courseImport.create).toHaveBeenCalledWith({
-      data: expect.objectContaining({
-        userId,
-        fileName: "transfer-courses.csv",
-        mediaType: "text/csv",
-        status: "UPLOADED",
-      }),
+      data: { userId, status: "UPLOADED" },
     })
   })
 

@@ -13,8 +13,8 @@ import {
   updateRoadmapActivity,
   type AppData,
   type CompletedCourse,
-  type CourseConfirmation,
   type CourseImport,
+  type CourseConfirmation,
   type Job,
   type RoadmapItem,
 } from "./api";
@@ -48,7 +48,7 @@ type MatchedJob = Job;
 type NewRoadmapItem = Omit<RoadmapItem, "id" | "status">;
 type CourseUploadStatus = "idle" | "uploading" | "processing" | "success" | "error";
 type PendingCourseFile = { details: SelectedFile; file: File };
-type CourseReviewDraft = Omit<CourseConfirmation, "creditHours"> & { creditHoursInput: string; reviewStatus: string; reviewNote: string | null };
+type CourseReviewDraft = CourseImport["extractedCourses"][number] & { originalCourseTitle: string };
 type SkillCoverageStatus = "In profile" | "Completed" | "Planned" | "Needs activity";
 
 function getInitials(name: string): string {
@@ -232,12 +232,10 @@ function CourseReviewPanel({
   useEffect(() => {
     setCourses((courseImport?.extractedCourses || []).map((course) => ({
       id: course.id,
-      courseCode: course.courseCode,
       courseTitle: course.courseTitle,
-      grade: course.grade,
-      creditHoursInput: course.creditHours === null ? "" : String(course.creditHours),
+      skills: course.skills,
       reviewStatus: course.reviewStatus,
-      reviewNote: course.reviewNote,
+      originalCourseTitle: course.courseTitle,
     })));
     setValidationError("");
   }, [courseImport?.id, courseImport?.status]);
@@ -252,22 +250,14 @@ function CourseReviewPanel({
       setValidationError("Keep at least one course to confirm.");
       return;
     }
-    const invalidCredits = courses.some((course) => {
-      if (!course.creditHoursInput.trim()) return false;
-      const hours = Number(course.creditHoursInput);
-      return !Number.isFinite(hours) || hours < 0 || hours > 999.9 || Math.round(hours * 10) !== hours * 10;
-    });
-    if (invalidCredits) {
-      setValidationError("Credit hours must be between 0 and 999.9 with at most one decimal place.");
+    if (courses.some((course) => !course.courseTitle.trim() || course.courseTitle.trim().length > 200)) {
+      setValidationError("Each course name is required and must be 200 characters or fewer.");
       return;
     }
     setValidationError("");
     onConfirm(courses.map((course) => ({
       id: course.id,
-      courseCode: course.courseCode?.trim() || null,
       courseTitle: course.courseTitle?.trim() || "",
-      grade: course.grade?.trim().toUpperCase() || "",
-      creditHours: course.creditHoursInput.trim() ? Number(course.creditHoursInput) : null,
     })));
   };
 
@@ -279,25 +269,32 @@ function CourseReviewPanel({
           <h3>{courseImport.extractedCourses.length} courses found</h3>
         </div>
       </div>
-      <p className="course-review-intro">Correct any details before saving. Courses without an exact catalog match are still available to confirm.</p>
+      <p className="course-review-intro">Review class names and the skills matched from the course catalog. Grades, sections, and transcript details are not saved.</p>
       <div className="course-review-list">
         {courses.map((course) => (
           <article className="course-review-row" key={course.id}>
             <div className="course-review-row-heading">
-              <span className={`course-review-badge ${course.reviewStatus === "UNRECOGNIZED" ? "unrecognized" : ""}`}>
-                {course.reviewStatus === "UNRECOGNIZED" ? "Needs review" : "Catalog match"}
+              <span className={`course-review-badge ${course.reviewStatus === "UNRECOGNIZED" || course.courseTitle !== course.originalCourseTitle ? "unrecognized" : ""}`}>
+                {course.reviewStatus === "UNRECOGNIZED" || course.courseTitle !== course.originalCourseTitle ? "Needs review" : "Catalog match"}
               </span>
               <button type="button" className="text-button" onClick={() => setCourses((current) => current.filter((item) => item.id !== course.id))} disabled={confirming}>
                 Remove
               </button>
             </div>
             <div className="course-review-fields">
-              <label>Course code<input value={course.courseCode || ""} maxLength={80} onChange={(event) => updateCourse(course.id, { courseCode: event.target.value || null })} disabled={confirming} /></label>
-              <label>Course name<input value={course.courseTitle || ""} maxLength={200} onChange={(event) => updateCourse(course.id, { courseTitle: event.target.value })} disabled={confirming} /></label>
-              <label>Grade<input value={course.grade || ""} maxLength={40} onChange={(event) => updateCourse(course.id, { grade: event.target.value })} disabled={confirming} /></label>
-              <label>Credit hours<input type="number" min="0" max="999.9" step="0.1" value={course.creditHoursInput} onChange={(event) => updateCourse(course.id, { creditHoursInput: event.target.value })} disabled={confirming} /></label>
+              <label>Class name<input value={course.courseTitle} maxLength={200} onChange={(event) => updateCourse(course.id, { courseTitle: event.target.value })} disabled={confirming} /></label>
+              <div className="course-review-skills">
+                <strong>Skills achieved</strong>
+                <span>{course.courseTitle !== course.originalCourseTitle ? "Confirm the corrected class name to rematch skills" : course.skills.length ? course.skills.join(", ") : "No catalog skills matched"}</span>
+              </div>
             </div>
-            {course.reviewNote && <p className="course-review-note">{course.reviewNote}</p>}
+            {(course.reviewStatus === "UNRECOGNIZED" || course.courseTitle !== course.originalCourseTitle) && (
+              <p className="course-review-note">
+                {course.courseTitle !== course.originalCourseTitle
+                  ? "This class name will be rematched against the catalog when saved."
+                  : "No exact course catalog match was found; this class can still be saved by name."}
+              </p>
+            )}
           </article>
         ))}
       </div>
@@ -958,7 +955,7 @@ function ProfileView({
               <div className="completed-course-list">
                 {completedCourses.map((course) => (
                   <article className="completed-course-row" key={course.id}>
-                    <div><strong>{course.courseCode ? `${course.courseCode} · ` : ""}{course.courseTitle}</strong><small>{[course.grade ? `Grade ${course.grade}` : "", course.creditHours === null ? "" : `${course.creditHours} credits`, course.term].filter(Boolean).join(" · ") || "Completed course"}</small></div>
+                    <div><strong>{course.courseTitle}</strong><small>{course.skills.length ? `Skills achieved: ${course.skills.join(", ")}` : "No catalog skills matched"}</small></div>
                   </article>
                 ))}
               </div>
@@ -1066,7 +1063,7 @@ export default function App() {
     return runMutation(() => updateRoadmapActivity(id, status), "Roadmap progress updated");
   };
   const courseFile: SelectedFile | null = pendingCourseFile?.details ?? (data?.courseImport
-    ? { name: data.courseImport.fileName, type: data.courseImport.mediaType, size: data.courseImport.size }
+    ? { name: "Coursework import", type: "", size: 0 }
     : null);
   const importCourses = (file: SelectedFile, originalFile: File) => {
     setPendingCourseFile({ details: file, file: originalFile });
@@ -1090,7 +1087,7 @@ export default function App() {
         throw new Error("The course upload service returned an invalid response.");
       }
       if (result.status.toUpperCase() === "FAILED") {
-        throw new Error(result.errorMessage || "The backend could not process the course file.");
+        throw new Error("The backend could not process the course file.");
       }
       if (result.status.toUpperCase() !== "REVIEW_REQUIRED") {
         throw new Error(`The backend returned an unexpected course import status: ${result.status}.`);

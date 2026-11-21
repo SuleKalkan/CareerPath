@@ -160,23 +160,22 @@ INSERT INTO course_skills (course_id, skill_id) VALUES
   ('90000000-0000-4000-8000-000000000004', '30000000-0000-4000-8000-000000000009')
 ON CONFLICT DO NOTHING;
 
-INSERT INTO course_imports (id, user_id, file_name, media_type, storage_key, status, error_message) VALUES
-  ('70000000-0000-4000-8000-000000000001', '10000000-0000-4000-8000-000000000001', 'maya-transcript-fall-2025.pdf', 'application/pdf', 'demo/maya/transcript-confirmed.pdf', 'CONFIRMED', NULL),
-  ('70000000-0000-4000-8000-000000000002', '10000000-0000-4000-8000-000000000001', 'maya-transcript-spring-2026.pdf', 'application/pdf', 'demo/maya/transcript-review.pdf', 'REVIEW_REQUIRED', NULL),
-  ('70000000-0000-4000-8000-000000000003', '10000000-0000-4000-8000-000000000002', 'jordan-transcript-unreadable.pdf', 'application/pdf', 'demo/jordan/transcript-failed.pdf', 'FAILED', 'The sample file could not be read. Upload a readable PDF or image.')
+INSERT INTO course_imports (id, user_id, status) VALUES
+  ('70000000-0000-4000-8000-000000000001', '10000000-0000-4000-8000-000000000001', 'CONFIRMED'),
+  ('70000000-0000-4000-8000-000000000002', '10000000-0000-4000-8000-000000000001', 'REVIEW_REQUIRED'),
+  ('70000000-0000-4000-8000-000000000003', '10000000-0000-4000-8000-000000000002', 'FAILED')
 ON CONFLICT DO NOTHING;
 
-INSERT INTO student_courses (id, user_id, course_id, source_import_id, institution_name, course_code, course_title, term, grade, deduplication_key, completion_status) VALUES
-  ('91000000-0000-4000-8000-000000000001', '10000000-0000-4000-8000-000000000001', '90000000-0000-4000-8000-000000000001', '70000000-0000-4000-8000-000000000001', 'CareerPath Demo University', 'CS210', 'Data Structures', 'Fall 2025', 'A-', 'careerpath-demo-university:cs210:fall-2025', 'COMPLETED'),
-  ('91000000-0000-4000-8000-000000000002', '10000000-0000-4000-8000-000000000001', '90000000-0000-4000-8000-000000000002', '70000000-0000-4000-8000-000000000001', 'CareerPath Demo University', 'CS101', 'Introduction to Programming with Python', 'Fall 2025', 'A', 'careerpath-demo-university:cs101:fall-2025', 'COMPLETED'),
-  ('91000000-0000-4000-8000-000000000003', '10000000-0000-4000-8000-000000000002', '90000000-0000-4000-8000-000000000003', NULL, 'CareerPath Demo University', 'IT220', 'Network Fundamentals', 'Spring 2026', NULL, 'careerpath-demo-university:it220:spring-2026', 'IN_PROGRESS')
+INSERT INTO student_courses (id, user_id, course_id, course_title, deduplication_key) VALUES
+  ('91000000-0000-4000-8000-000000000001', '10000000-0000-4000-8000-000000000001', '90000000-0000-4000-8000-000000000001', 'Data Structures', 'course-title:datastructures'),
+  ('91000000-0000-4000-8000-000000000002', '10000000-0000-4000-8000-000000000001', '90000000-0000-4000-8000-000000000002', 'Introduction to Programming with Python', 'course-title:introductiontoprogrammingwithpython')
 ON CONFLICT DO NOTHING;
 
-INSERT INTO extracted_courses (id, course_import_id, recognized_course_id, student_course_id, raw_text, institution_name, course_code, course_title, term, grade, confidence, review_status, review_note) VALUES
-  ('80000000-0000-4000-8000-000000000001', '70000000-0000-4000-8000-000000000001', '90000000-0000-4000-8000-000000000001', '91000000-0000-4000-8000-000000000001', 'CS210 Data Structures A- Fall 2025 3.0 credits', 'CareerPath Demo University', 'CS210', 'Data Structures', 'Fall 2025', 'A-', 0.9920, 'CONFIRMED', 'Matched catalog course and added to academic history.'),
-  ('80000000-0000-4000-8000-000000000002', '70000000-0000-4000-8000-000000000001', '90000000-0000-4000-8000-000000000002', '91000000-0000-4000-8000-000000000002', 'CS101 Intro to Programming with Python A Fall 2025', 'CareerPath Demo University', 'CS101', 'Introduction to Programming with Python', 'Fall 2025', 'A', 0.9650, 'CONFIRMED', 'Matched catalog course and added to academic history.'),
-  ('80000000-0000-4000-8000-000000000003', '70000000-0000-4000-8000-000000000002', '90000000-0000-4000-8000-000000000003', NULL, 'IT220 Network Fundamentals B+ Spring 2026', 'CareerPath Demo University', 'IT220', 'Network Fundamentals', 'Spring 2026', 'B+', 0.8870, 'RECOGNIZED', 'Review the extracted term and confirm whether to add this course.'),
-  ('80000000-0000-4000-8000-000000000004', '70000000-0000-4000-8000-000000000002', NULL, NULL, 'Special Topics: Secure Campus Devices Spring 2026', 'CareerPath Demo University', NULL, 'Special Topics: Secure Campus Devices', 'Spring 2026', NULL, 0.5120, 'UNRECOGNIZED', 'No catalog match was found. Edit the course details or remove this row.')
+INSERT INTO extracted_courses (id, course_import_id, recognized_course_id, student_course_id, course_title, review_status) VALUES
+  ('80000000-0000-4000-8000-000000000001', '70000000-0000-4000-8000-000000000001', '90000000-0000-4000-8000-000000000001', '91000000-0000-4000-8000-000000000001', 'Data Structures', 'CONFIRMED'),
+  ('80000000-0000-4000-8000-000000000002', '70000000-0000-4000-8000-000000000001', '90000000-0000-4000-8000-000000000002', '91000000-0000-4000-8000-000000000002', 'Introduction to Programming with Python', 'CONFIRMED'),
+  ('80000000-0000-4000-8000-000000000003', '70000000-0000-4000-8000-000000000002', '90000000-0000-4000-8000-000000000003', NULL, 'Network Fundamentals', 'RECOGNIZED'),
+  ('80000000-0000-4000-8000-000000000004', '70000000-0000-4000-8000-000000000002', NULL, NULL, 'Special Topics: Secure Campus Devices', 'UNRECOGNIZED')
 ON CONFLICT DO NOTHING;
 
 INSERT INTO roadmaps (id, user_id, career_id, title) VALUES
@@ -185,7 +184,7 @@ INSERT INTO roadmaps (id, user_id, career_id, title) VALUES
 ON CONFLICT DO NOTHING;
 
 INSERT INTO roadmap_activities (id, roadmap_id, preparation_step_id, skill_id, student_course_id, title, category, duration, description, status, position) VALUES
-  ('a1000000-0000-4000-8000-000000000001', 'a0000000-0000-4000-8000-000000000001', NULL, '30000000-0000-4000-8000-000000000008', '91000000-0000-4000-8000-000000000001', 'Complete Data Structures', 'COURSE', 'Fall 2025', 'Build a strong foundation in algorithms and computational thinking.', 'COMPLETED', 0),
+  ('a1000000-0000-4000-8000-000000000001', 'a0000000-0000-4000-8000-000000000001', NULL, '30000000-0000-4000-8000-000000000008', '91000000-0000-4000-8000-000000000001', 'Data Structures', 'COURSE', 'Completed course', 'Build a strong foundation in algorithms and computational thinking.', 'COMPLETED', 0),
   ('a1000000-0000-4000-8000-000000000002', 'a0000000-0000-4000-8000-000000000001', NULL, NULL, NULL, 'Build a portfolio project', 'PROJECT', '4 weeks', 'Create and document a full-stack application that solves a real problem.', 'IN_PROGRESS', 1),
   ('a1000000-0000-4000-8000-000000000003', 'a0000000-0000-4000-8000-000000000001', '21000000-0000-4000-8000-000000000005', NULL, NULL, 'Practice technical interviews', 'CAREER_PREP', '2 weeks', 'Complete two mock interviews and review common technical questions.', 'NOT_STARTED', 2),
   ('a1000000-0000-4000-8000-000000000004', 'a0000000-0000-4000-8000-000000000001', '21000000-0000-4000-8000-000000000001', '30000000-0000-4000-8000-000000000001', NULL, 'Develop Networking', 'SKILL', '4 weeks', 'Learn network fundamentals through a guided lab. Mark complete to raise the cybersecurity job match from 20% to 40%.', 'NOT_STARTED', 3),

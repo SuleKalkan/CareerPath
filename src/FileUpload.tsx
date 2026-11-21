@@ -62,7 +62,11 @@ export default function FileUpload({
       <span>{file ? "✓" : "↑"}</span>
       <div>
         <strong>{file?.name || label}</strong>
-        <small>{file ? `${SUPPORTED_FILE_LABEL} · ${(file.size / 1024 / 1024).toFixed(2)} MB` : `${SUPPORTED_FILE_LABEL} · Max ${(MAX_FILE_SIZE_BYTES / 1024 / 1024).toFixed(0)} MB`}</small>
+        <small>{file
+          ? file.size > 0
+            ? `${SUPPORTED_FILE_LABEL} · ${(file.size / 1024 / 1024).toFixed(2)} MB`
+            : `${SUPPORTED_FILE_LABEL} · Uploaded file details are not stored`
+          : `${SUPPORTED_FILE_LABEL} · Max ${(MAX_FILE_SIZE_BYTES / 1024 / 1024).toFixed(0)} MB`}</small>
       </div>
       {file ? (
         <div className="file-upload-actions">

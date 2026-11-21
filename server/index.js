@@ -1,4 +1,3 @@
-import { randomUUID } from "node:crypto";
 import { basename } from "node:path";
 import { Readable } from "node:stream";
 import dotenv from "dotenv";
@@ -6,11 +5,11 @@ import express from "express";
 import { Prisma, PrismaClient } from "@prisma/client";
 import {
   findCatalogMatch,
-  isCompletedGrade,
   isDuplicateCourse,
   makeDeduplicationKey,
   parseCourseCsv,
 } from "./course-extraction.js";
+import { prepareExtractedCourses } from "./course-data.js";
 import { parseCoursePdf } from "./pdf-course-extraction.js";
 
 dotenv.config({ path: ".env.local" });
@@ -108,34 +107,16 @@ function mapActivity(activity) {
 function mapExtractedCourse(course) {
   return {
     id: course.id,
-    courseCode: course.courseCode,
     courseTitle: course.courseTitle,
-    grade: course.grade,
-    creditHours: course.creditHours === null ? null : Number(course.creditHours),
-    institutionName: course.institutionName,
-    term: course.term,
+    skills: course.recognizedCourse?.skills.map(({ skill }) => skill.name) || [],
     reviewStatus: course.reviewStatus,
-    reviewNote: course.reviewNote,
-    recognizedCourse: course.recognizedCourse
-      ? {
-          id: course.recognizedCourse.id,
-          courseCode: course.recognizedCourse.courseCode,
-          title: course.recognizedCourse.title,
-          institutionName: course.recognizedCourse.institutionName,
-        }
-      : null,
   };
 }
 
 function mapCourseImport(courseImport) {
-  const encodedSize = Number(courseImport.storageKey.split(":").pop());
   return {
     id: courseImport.id,
-    fileName: courseImport.fileName,
-    mediaType: courseImport.mediaType,
-    size: Number.isFinite(encodedSize) ? encodedSize : 0,
     status: courseImport.status,
-    errorMessage: courseImport.errorMessage,
     extractedCourses: courseImport.extractedCourses.map(mapExtractedCourse),
   };
 }
@@ -144,40 +125,13 @@ function validateConfirmedCourse(course) {
   if (!course || typeof course !== "object" || typeof course.id !== "string") {
     throw httpError(400, "Each selected course must include its extracted course ID.");
   }
-  if (course.courseCode !== null && course.courseCode !== undefined && typeof course.courseCode !== "string") {
-    throw httpError(400, "Course code must be a string.");
-  }
-  if (course.courseTitle !== null && course.courseTitle !== undefined && typeof course.courseTitle !== "string") {
-    throw httpError(400, "Course name must be a string.");
-  }
-  if (course.grade !== null && course.grade !== undefined && typeof course.grade !== "string") {
-    throw httpError(400, "Grade must be a string.");
-  }
-  if (course.creditHours !== null && course.creditHours !== undefined && typeof course.creditHours !== "number") {
-    throw httpError(400, "Credit hours must be a number.");
-  }
-  const courseCode = typeof course.courseCode === "string" ? course.courseCode.trim() : "";
   const courseTitle = typeof course.courseTitle === "string" ? course.courseTitle.trim() : "";
-  const grade = typeof course.grade === "string" ? course.grade.trim().toUpperCase() : "";
-  const creditHours = course.creditHours === null || course.creditHours === undefined
-    ? null
-    : Number(course.creditHours);
 
   if (!courseTitle || courseTitle.length > 200) {
     throw httpError(400, "Course name is required and must be 200 characters or fewer.");
   }
-  if (courseCode.length > 80) throw httpError(400, "Course code must be 80 characters or fewer.");
-  if (!isCompletedGrade(grade)) {
-    throw httpError(400, `Grade "${grade || "(missing)"}" is not recognized as completed coursework.`);
-  }
-  if (
-    creditHours !== null
-    && (!Number.isFinite(creditHours) || creditHours < 0 || creditHours > 999.9 || Math.round(creditHours * 10) !== creditHours * 10)
-  ) {
-    throw httpError(400, "Credit hours must be between 0 and 999.9 with at most one decimal place.");
-  }
 
-  return { courseCode: courseCode || null, courseTitle, grade, creditHours };
+  return { courseTitle };
 }
 
 async function readCourseUpload(request) {
@@ -263,9 +217,12 @@ async function getDemoContext() {
       skills: { include: { skill: true } },
       savedJobs: { select: { jobId: true } },
       courses: {
-        where: { completionStatus: "COMPLETED" },
         orderBy: { createdAt: "desc" },
-        include: { course: true },
+        include: {
+          course: {
+            include: { skills: { include: { skill: true } } },
+          },
+        },
       },
       courseImports: {
         orderBy: { createdAt: "desc" },
@@ -273,7 +230,11 @@ async function getDemoContext() {
         include: {
           extractedCourses: {
             orderBy: { createdAt: "asc" },
-            include: { recognizedCourse: true },
+            include: {
+              recognizedCourse: {
+                include: { skills: { include: { skill: true } } },
+              },
+            },
           },
         },
       },
@@ -301,6 +262,7 @@ async function buildBootstrap() {
   const { user, roadmap, activities } = await getDemoContext();
   const acquired = new Set([
     ...user.skills.map(({ skill }) => skill.normalizedName),
+    ...user.courses.flatMap((course) => course.course?.skills.map(({ skill }) => skill.normalizedName) || []),
     ...activities
       .filter((activity) => activity.category === "SKILL" && activity.status === "COMPLETED" && activity.skill)
       .map((activity) => activity.skill.normalizedName),
@@ -330,12 +292,8 @@ async function buildBootstrap() {
     courseImport: user.courseImports[0] ? mapCourseImport(user.courseImports[0]) : null,
     completedCourses: user.courses.map((course) => ({
       id: course.id,
-      courseCode: course.courseCode,
       courseTitle: course.courseTitle,
-      grade: course.grade,
-      creditHours: course.credits === null ? null : Number(course.credits),
-      institutionName: course.institutionName,
-      term: course.term,
+      skills: course.course?.skills.map(({ skill }) => skill.name) || [],
     })),
     jobs: jobs.map((job) => {
       const requiredSkills = job.skills
@@ -513,27 +471,28 @@ app.post("/api/profile/course-imports", async (request, response) => {
   const { user } = await getDemoContext();
 
   const catalog = await prisma.course.findMany({
-    select: { id: true, institutionName: true, courseCode: true, title: true },
+    select: {
+      id: true,
+      institutionName: true,
+      courseCode: true,
+      title: true,
+      skills: {
+        select: {
+          skill: { select: { id: true, name: true, normalizedName: true } },
+        },
+      },
+    },
   });
-  const extractedCourses = parsedCourses.map((course) => {
-    const match = findCatalogMatch(course, catalog);
-    return {
-      ...course,
-      recognizedCourseId: match?.id || null,
-      confidence: match ? 1 : null,
-      reviewStatus: course.reviewStatus === "UNRECOGNIZED" || !match ? "UNRECOGNIZED" : "RECOGNIZED",
-      reviewNote: course.reviewNote || (match ? null : "No exact catalog match; review this course before confirming."),
-    };
-  });
+  const extractedCourses = prepareExtractedCourses(parsedCourses, catalog);
+  if (!extractedCourses.length) {
+    throw httpError(422, "No completed course names were found in the upload.");
+  }
 
   const imported = await prisma.$transaction(async (transaction) => {
     await transaction.courseImport.deleteMany({ where: { userId: user.id } });
     const courseImport = await transaction.courseImport.create({
       data: {
         userId: user.id,
-        fileName: upload.fileName,
-        mediaType: upload.mediaType,
-        storageKey: `memory:${user.id}:${randomUUID()}:${upload.size}`,
         status: "PROCESSING",
       },
     });
@@ -541,16 +500,8 @@ app.post("/api/profile/course-imports", async (request, response) => {
       data: extractedCourses.map((course) => ({
         courseImportId: courseImport.id,
         recognizedCourseId: course.recognizedCourseId,
-        rawText: course.rawText,
-        institutionName: course.institutionName,
-        courseCode: course.courseCode,
         courseTitle: course.courseTitle,
-        creditHours: course.creditHours,
-        term: course.term,
-        grade: course.grade,
-        confidence: course.confidence,
         reviewStatus: course.reviewStatus,
-        reviewNote: course.reviewNote,
       })),
     });
     await transaction.courseImport.update({
@@ -562,7 +513,11 @@ app.post("/api/profile/course-imports", async (request, response) => {
       include: {
         extractedCourses: {
           orderBy: { createdAt: "asc" },
-          include: { recognizedCourse: true },
+          include: {
+            recognizedCourse: {
+              include: { skills: { include: { skill: true } } },
+            },
+          },
         },
       },
     });
@@ -586,7 +541,13 @@ app.post("/api/profile/course-imports/:importId/confirm", async (request, respon
     const courseImport = await transaction.courseImport.findFirst({
       where: { id: request.params.importId, userId: user.id },
       include: {
-        extractedCourses: { include: { recognizedCourse: true } },
+        extractedCourses: {
+          include: {
+            recognizedCourse: {
+              include: { skills: { include: { skill: true } } },
+            },
+          },
+        },
       },
     });
     if (!courseImport) throw httpError(404, "Course import was not found.");
@@ -617,15 +578,25 @@ app.post("/api/profile/course-imports/:importId/confirm", async (request, respon
         courseImportId: courseImport.id,
         id: { notIn: [...selectedIds] },
       },
-      data: { reviewStatus: "REMOVED", reviewNote: "Removed by the student during review." },
+      data: { reviewStatus: "REMOVED" },
     });
 
     const existingCourses = await transaction.studentCourse.findMany({
-      where: { userId: user.id, completionStatus: "COMPLETED" },
-      select: { courseCode: true, courseTitle: true, deduplicationKey: true },
+      where: { userId: user.id },
+      select: { courseTitle: true, deduplicationKey: true },
     });
     const catalog = await transaction.course.findMany({
-      select: { id: true, institutionName: true, courseCode: true, title: true },
+      select: {
+        id: true,
+        institutionName: true,
+        courseCode: true,
+        title: true,
+        skills: {
+          select: {
+            skill: { select: { id: true, name: true, normalizedName: true } },
+          },
+        },
+      },
     });
     const requestKeys = new Set();
     let added = 0;
@@ -638,21 +609,16 @@ app.post("/api/profile/course-imports/:importId/confirm", async (request, respon
       : -1;
 
     for (const { extracted, course } of selected) {
-      const catalogMatch = findCatalogMatch(
-        { ...course, institutionName: extracted.institutionName },
-        catalog,
-      );
+      const catalogMatch = course.courseTitle === extracted.courseTitle
+        ? extracted.recognizedCourse
+        : findCatalogMatch({ courseTitle: course.courseTitle }, catalog);
       if (isDuplicateCourse(course, existingCourses, requestKeys)) {
         await transaction.extractedCourse.update({
           where: { id: extracted.id },
           data: {
-            courseCode: course.courseCode,
             courseTitle: course.courseTitle,
-            grade: course.grade,
-            creditHours: course.creditHours,
             recognizedCourseId: catalogMatch?.id || null,
             reviewStatus: "CONFIRMED",
-            reviewNote: "Already recorded; this duplicate was skipped.",
           },
         });
         skipped += 1;
@@ -663,15 +629,8 @@ app.post("/api/profile/course-imports/:importId/confirm", async (request, respon
         data: {
           userId: user.id,
           courseId: catalogMatch?.id,
-          sourceImportId: courseImport.id,
-          institutionName: extracted.institutionName,
-          courseCode: course.courseCode,
           courseTitle: course.courseTitle,
-          credits: course.creditHours,
-          term: extracted.term,
-          grade: course.grade,
-          deduplicationKey: makeDeduplicationKey(course.courseCode, course.courseTitle),
-          completionStatus: "COMPLETED",
+          deduplicationKey: makeDeduplicationKey(null, course.courseTitle),
         },
       });
       await transaction.extractedCourse.update({
@@ -679,34 +638,24 @@ app.post("/api/profile/course-imports/:importId/confirm", async (request, respon
         data: {
           studentCourseId: studentCourse.id,
           recognizedCourseId: catalogMatch?.id || null,
-          courseCode: course.courseCode,
           courseTitle: course.courseTitle,
-          grade: course.grade,
-          creditHours: course.creditHours,
           reviewStatus: "CONFIRMED",
-          reviewNote: catalogMatch ? "Matched to the course catalog." : "Saved as provided; no exact catalog match was found.",
         },
       });
       existingCourses.push({
-        courseCode: course.courseCode,
         courseTitle: course.courseTitle,
-        deduplicationKey: makeDeduplicationKey(course.courseCode, course.courseTitle),
+        deduplicationKey: makeDeduplicationKey(null, course.courseTitle),
       });
       added += 1;
       if (roadmap) {
-        const title = `${course.courseCode ? `${course.courseCode} - ` : ""}${course.courseTitle}`.slice(0, 100);
-        const details = [
-          course.grade ? `Grade ${course.grade}.` : "",
-          course.creditHours !== null ? `${course.creditHours} credit hours.` : "",
-        ].filter(Boolean).join(" ");
         await transaction.roadmapActivity.create({
           data: {
             roadmapId: roadmap.id,
             studentCourseId: studentCourse.id,
-            title,
+            title: course.courseTitle.slice(0, 100),
             category: "TRANSFER_CREDIT",
-            duration: course.creditHours === null ? "Completed course" : `${course.creditHours} credits`,
-            description: (details || "Completed coursework confirmed from an uploaded course list.").slice(0, 240),
+            duration: "Completed course",
+            description: "Completed course added from an uploaded course list.",
             status: "COMPLETED",
             position: ++position,
           },
@@ -720,7 +669,11 @@ app.post("/api/profile/course-imports/:importId/confirm", async (request, respon
       include: {
         extractedCourses: {
           orderBy: { createdAt: "asc" },
-          include: { recognizedCourse: true },
+          include: {
+            recognizedCourse: {
+              include: { skills: { include: { skill: true } } },
+            },
+          },
         },
       },
     });

@@ -212,18 +212,11 @@ model CourseSkill {
 model CourseImport {
   id               String             @id @default(uuid()) @db.Uuid
   userId           String             @map("user_id") @db.Uuid
-  fileName         String             @map("file_name") @db.VarChar(255)
-  mediaType        String             @map("media_type") @db.VarChar(120)
-  storageKey       String             @unique @map("storage_key") @db.VarChar(500)
   status           CourseImportStatus @default(UPLOADED)
-  errorMessage     String?            @map("error_message")
   createdAt        DateTime           @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt        DateTime           @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
-  document_id      String?            @unique @db.Uuid
-  documents        documents?         @relation(fields: [document_id], references: [id])
   user             User               @relation(fields: [userId], references: [id], onDelete: Cascade)
   extractedCourses ExtractedCourse[]
-  studentCourses   StudentCourse[]
 
   @@index([userId, createdAt])
   @@index([status])
@@ -235,16 +228,8 @@ model ExtractedCourse {
   courseImportId     String                      @map("course_import_id") @db.Uuid
   recognizedCourseId String?                     @map("recognized_course_id") @db.Uuid
   studentCourseId    String?                     @unique @map("student_course_id") @db.Uuid
-  rawText            String                      @map("raw_text")
-  institutionName    String?                     @map("institution_name") @db.VarChar(200)
-  courseCode         String?                     @map("course_code") @db.VarChar(80)
-  courseTitle        String?                     @map("course_title") @db.VarChar(200)
-  creditHours        Decimal?                    @map("credit_hours") @db.Decimal(4, 1)
-  term               String?                     @db.VarChar(80)
-  grade              String?                     @db.VarChar(40)
-  confidence         Decimal?                    @db.Decimal(5, 4)
+  courseTitle        String                      @map("course_title") @db.VarChar(200)
   reviewStatus       ExtractedCourseReviewStatus @default(PENDING) @map("review_status")
-  reviewNote         String?                     @map("review_note")
   createdAt          DateTime                    @default(now()) @map("created_at") @db.Timestamptz(6)
   courseImport       CourseImport                @relation(fields: [courseImportId], references: [id], onDelete: Cascade)
   recognizedCourse   Course?                     @relation("RecognizedCourse", fields: [recognizedCourseId], references: [id])
@@ -259,24 +244,16 @@ model StudentCourse {
   id               String                 @id @default(uuid()) @db.Uuid
   userId           String                 @map("user_id") @db.Uuid
   courseId         String?                @map("course_id") @db.Uuid
-  sourceImportId   String?                @map("source_import_id") @db.Uuid
-  institutionName  String?                @map("institution_name") @db.VarChar(200)
-  courseCode       String?                @map("course_code") @db.VarChar(80)
   courseTitle      String                 @map("course_title") @db.VarChar(200)
-  credits          Decimal?               @db.Decimal(4, 1)
-  term             String?                @db.VarChar(80)
-  grade            String?                @db.VarChar(40)
   deduplicationKey String                 @map("deduplication_key") @db.VarChar(300)
-  completionStatus CourseCompletionStatus @default(COMPLETED) @map("completion_status")
   createdAt        DateTime               @default(now()) @map("created_at") @db.Timestamptz(6)
   extraction       ExtractedCourse?
   roadmapActivity  RoadmapActivity?
   course           Course?                @relation(fields: [courseId], references: [id])
-  sourceImport     CourseImport?          @relation(fields: [sourceImportId], references: [id])
   user             User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, deduplicationKey])
-  @@index([userId, completionStatus])
+  @@index([userId, createdAt])
   @@index([courseId])
   @@map("student_courses")
 }
@@ -354,7 +331,6 @@ model documents {
   uploaded_at    DateTime?       @db.Timestamptz(6)
   created_at     DateTime        @default(now()) @db.Timestamptz(6)
   updated_at     DateTime        @default(now()) @db.Timestamptz(6)
-  course_imports CourseImport?
   users          User            @relation(fields: [user_id], references: [id], onDelete: Cascade)
 
   @@unique([storage_bucket, storage_key])
@@ -389,14 +365,6 @@ enum ActivityStatus {
   COMPLETED
 
   @@map("activity_status")
-}
-
-enum CourseCompletionStatus {
-  COMPLETED
-  TRANSFERRED
-  IN_PROGRESS
-
-  @@map("course_completion_status")
 }
 
 enum CourseImportStatus {

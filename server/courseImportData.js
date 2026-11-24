@@ -1,10 +1,7 @@
 const supportedFileTypes = new Map([
   [".pdf", "application/pdf"],
   [".doc", "application/msword"],
-  [
-    ".docx",
-    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-  ],
+  [".docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"],
   [".csv", "text/csv"],
 ])
 
@@ -41,22 +38,16 @@ export function validateCourseImportInput({ fileName, mediaType, size } = {}) {
 }
 
 export async function replaceCourseImport(prisma, userId, input) {
-  const file = validateCourseImportInput(input)
+  validateCourseImportInput(input)
   await prisma.courseImport.deleteMany({ where: { userId } })
   const imported = await prisma.courseImport.create({
     data: {
       userId,
-      fileName: file.fileName,
-      mediaType: file.mediaType,
-      storageKey: `metadata:${userId}:${Date.now()}:${file.size}`,
       status: "UPLOADED",
     },
   })
   return {
     id: imported.id,
-    fileName: imported.fileName,
-    mediaType: imported.mediaType,
-    size: file.size,
     status: imported.status,
   }
 }
@@ -66,7 +57,7 @@ export async function removeCourseImport(prisma, userId, importId) {
     where: { id: importId, userId },
   })
   if (!deleted.count) {
-    const error = new Error("Uploaded file was not found.")
+    const error = new Error("Course import was not found.")
     error.status = 404
     throw error
   }

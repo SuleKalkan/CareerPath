@@ -26,30 +26,15 @@ export type RoadmapItem = {
 
 export type ExtractedCourse = {
   id: string;
-  courseCode: string | null;
-  courseTitle: string | null;
-  grade: string | null;
-  creditHours: number | null;
-  institutionName: string | null;
-  term: string | null;
+  courseTitle: string;
+  skills: string[];
   reviewStatus: string;
-  reviewNote: string | null;
-  recognizedCourse: {
-    id: string;
-    courseCode: string | null;
-    title: string;
-    institutionName: string;
-  } | null;
 };
 
 export type CompletedCourse = {
   id: string;
-  courseCode: string | null;
   courseTitle: string;
-  grade: string | null;
-  creditHours: number | null;
-  institutionName: string | null;
-  term: string | null;
+  skills: string[];
 };
 
 export type AppData = {
@@ -61,11 +46,7 @@ export type AppData = {
   jobs: Job[];
   courseImport: {
     id: string;
-    fileName: string;
-    mediaType: string;
-    size: number;
     status: string;
-    errorMessage: string | null;
     extractedCourses: ExtractedCourse[];
   } | null;
   completedCourses: CompletedCourse[];
@@ -73,10 +54,7 @@ export type AppData = {
 
 export type CourseImport = NonNullable<AppData["courseImport"]>;
 
-export type CourseConfirmation = Pick<
-  ExtractedCourse,
-  "id" | "courseCode" | "courseTitle" | "grade" | "creditHours"
->;
+export type CourseConfirmation = Pick<ExtractedCourse, "id" | "courseTitle">;
 
 export type CourseConfirmationResult = {
   added: number;
@@ -119,42 +97,28 @@ function parseUploadResponse(xhr: XMLHttpRequest): CourseImport {
   return result;
 }
 
-function isCourseImport(value: unknown): value is CourseImport {
+export function isCourseImport(value: unknown): value is CourseImport {
   if (!value || typeof value !== "object") return false;
+  const allowedImportFields = ["id", "status", "extractedCourses"];
+  if (Object.keys(value).some((key) => !allowedImportFields.includes(key))) return false;
   if (
     !("id" in value) || typeof value.id !== "string"
-    || !("fileName" in value) || typeof value.fileName !== "string"
-    || !("mediaType" in value) || typeof value.mediaType !== "string"
-    || !("size" in value) || typeof value.size !== "number"
     || !("status" in value) || typeof value.status !== "string"
-    || !("errorMessage" in value) || (value.errorMessage !== null && typeof value.errorMessage !== "string")
     || !("extractedCourses" in value) || !Array.isArray(value.extractedCourses)
   ) {
     return false;
   }
   return value.extractedCourses.every((course) => {
     if (!course || typeof course !== "object") return false;
+    const allowedCourseFields = ["id", "courseTitle", "skills", "reviewStatus"];
     const hasCourseFields = (
-      "id" in course && typeof course.id === "string"
-      && "courseCode" in course && (course.courseCode === null || typeof course.courseCode === "string")
-      && "courseTitle" in course && (course.courseTitle === null || typeof course.courseTitle === "string")
-      && "grade" in course && (course.grade === null || typeof course.grade === "string")
-      && "creditHours" in course && (course.creditHours === null || typeof course.creditHours === "number")
-      && "institutionName" in course && (course.institutionName === null || typeof course.institutionName === "string")
-      && "term" in course && (course.term === null || typeof course.term === "string")
+      !Object.keys(course).some((key) => !allowedCourseFields.includes(key))
+      && "id" in course && typeof course.id === "string"
+      && "courseTitle" in course && typeof course.courseTitle === "string"
+      && "skills" in course && Array.isArray(course.skills) && course.skills.every((skill: unknown) => typeof skill === "string")
       && "reviewStatus" in course && typeof course.reviewStatus === "string"
-      && "reviewNote" in course && (course.reviewNote === null || typeof course.reviewNote === "string")
-      && "recognizedCourse" in course
     );
-    if (!hasCourseFields) return false;
-    const match = course.recognizedCourse;
-    return match === null || (
-      typeof match === "object"
-      && "id" in match && typeof match.id === "string"
-      && "courseCode" in match && (match.courseCode === null || typeof match.courseCode === "string")
-      && "title" in match && typeof match.title === "string"
-      && "institutionName" in match && typeof match.institutionName === "string"
-    );
+    return hasCourseFields;
   });
 }
 
